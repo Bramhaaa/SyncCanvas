@@ -29,6 +29,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
+    implementation("io.github.erdtman:java-json-canonicalization:1.1")
 
     runtimeOnly("org.postgresql:postgresql")
 
@@ -42,4 +43,5 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty("synccanvas.vectors.dir", rootProject.projectDir.resolve("../spec/vectors").absolutePath)
 }
