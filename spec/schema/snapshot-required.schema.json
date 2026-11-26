@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synccanvas.dev/schema/snapshot-required.schema.json",
+  "title": "SNAPSHOT_REQUIRED",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "oldestAvailableSeq"],
+  "properties": {
+    "type": { "const": "SNAPSHOT_REQUIRED" },
+    "oldestAvailableSeq": { "type": "integer", "minimum": 1 }
+  }
+}

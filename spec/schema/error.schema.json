@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synccanvas.dev/schema/error.schema.json",
+  "title": "ERROR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "code", "message"],
+  "properties": {
+    "type": { "const": "ERROR" },
+    "code": { "$ref": "common.schema.json#/$defs/errorCode" },
+    "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "rejectedHlcs": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/hlc" }
+    }
+  }
+}

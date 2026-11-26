@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synccanvas.dev/schema/common.schema.json",
+  "title": "SyncCanvas Common Protocol Definitions",
+  "$defs": {
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]{1,32}$"
+    },
+    "objectId": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]{1,64}$"
+    },
+    "boardId": {
+      "type": "string",
+      "pattern": "^brd_[a-z0-9]{8}$"
+    },
+    "hlc": {
+      "type": "string",
+      "pattern": "^[0-9]{13}:[0-9]{5}:[a-z0-9_]{1,32}$"
+    },
+    "point": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "minItems": 2,
+      "maxItems": 2,
+      "items": false
+    },
+    "fieldValue": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/point" },
+          "maxItems": 2000
+        }
+      ]
+    },
+    "op": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectId", "field", "value", "hlc"],
+      "properties": {
+        "objectId": { "$ref": "#/$defs/objectId" },
+        "field": { "type": "string", "pattern": "^[a-zA-Z0-9]{1,64}$" },
+        "value": { "$ref": "#/$defs/fieldValue" },
+        "hlc": { "$ref": "#/$defs/hlc" }
+      }
+    },
+    "cursor": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        }
+      ]
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "CLOCK_SKEW",
+        "INVALID_FIELD",
+        "FRAME_TOO_LARGE",
+        "BOARD_FULL",
+        "RATE_LIMITED",
+        "INVALID_MESSAGE",
+        "BOARD_NOT_FOUND"
+      ]
+    }
+  }
+}

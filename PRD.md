@@ -106,7 +106,7 @@ Physical wall clocks (`Date.now()`) drift from device to device. An HLC combines
      * else if `pt == r.physicalTime` → `counter = r.counter + 1`
      * else (`now` strictly greatest) → `counter = 0`
 * **Counter Overflow:** If `counter` would exceed `99999`, set `physicalTime = physicalTime + 1`, `counter = 0`.
-* **Clock-Skew Guard:** The server rejects any op whose `hlc.physicalTime > serverNow + MAX_DRIFT_MS` (default `60_000`) and replies with `ERROR { code: "CLOCK_SKEW" }`. Clients ignore such ops if they receive them. Without this guard, one client with a badly wrong clock could "win" every future conflict.
+* **Clock-Skew Guard:** The server rejects any op whose `hlc.physicalTime > serverNow + MAX_DRIFT_MS` (default `60_000`) and replies with `ERROR { code: "CLOCK_SKEW" }`. Only the server enforces this guard: clients always merge ops delivered in a `SYNC_BROADCAST` (the server already validated them), and if their own clock is behind they simply do not advance it (see `spec/protocol.md` §2.6). If clients dropped ops based on their local clocks, replicas with different clocks would diverge. Without this guard, one client with a badly wrong clock could "win" every future conflict.
 * **Comparison (`compareHlc(a, b)`):** Compare `physicalTime` first, then `counter`, then `nodeId` lexicographically. As long as `nodeId`s are unique and each node issues strictly increasing timestamps, two distinct operations can never tie.
 
 ### 3.2 Granular LWW-Map (Field-Level Merging)
@@ -397,3 +397,8 @@ CREATE UNIQUE INDEX uq_crdt_ops_idem ON crdt_operations (board_id, object_id, fi
 * Undo now only reverts a register if the current user still owns its latest write.
 * Deployment: replaced Render/Railway free tiers with an always-on VM. Sleeping free tiers cause 30–60s cold starts that make a recruiter demo look broken.
 * Added P0/P1 prioritization, a monorepo layout, cross-language test vectors, and a realistic part-time roadmap.
+
+**v1.1 errata (2026-11-26, from the T01 protocol review; details in `spec/protocol.md`):**
+
+* The clock-skew guard is enforced by the server only. Clients always merge broadcast ops, because dropping them based on local clocks would break convergence.
+* Acks are per op: a client acks any broadcast op whose HLC `nodeId` is its own. `originClientId` is informational, since catch-up pages mix ops from many clients.

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synccanvas.dev/schema/sync-broadcast.schema.json",
+  "title": "SYNC_BROADCAST",
+  "description": "Invariants not expressible in JSON Schema (checked in code): serverSeqStart <= serverSeqEnd and ops.length == serverSeqEnd - serverSeqStart + 1. originClientId is informational; catch-up pages use \"server\".",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "serverSeqStart", "serverSeqEnd", "originClientId", "ops"],
+  "properties": {
+    "type": { "const": "SYNC_BROADCAST" },
+    "serverSeqStart": { "type": "integer", "minimum": 1 },
+    "serverSeqEnd": { "type": "integer", "minimum": 1 },
+    "originClientId": { "$ref": "common.schema.json#/$defs/nodeId" },
+    "ops": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "common.schema.json#/$defs/op" }
+    }
+  }
+}

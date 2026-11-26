@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synccanvas.dev/schema/sync-push.schema.json",
+  "title": "SYNC_PUSH",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "clientId", "ops"],
+  "properties": {
+    "type": { "const": "SYNC_PUSH" },
+    "clientId": { "$ref": "common.schema.json#/$defs/nodeId" },
+    "ops": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "common.schema.json#/$defs/op" }
+    }
+  }
+}

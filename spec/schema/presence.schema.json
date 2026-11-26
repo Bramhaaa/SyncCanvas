@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synccanvas.dev/schema/presence.schema.json",
+  "title": "PRESENCE",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "clientId", "displayName", "color", "cursor", "selectedIds"],
+  "properties": {
+    "type": { "const": "PRESENCE" },
+    "clientId": { "$ref": "common.schema.json#/$defs/nodeId" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "cursor": { "$ref": "common.schema.json#/$defs/cursor" },
+    "selectedIds": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/objectId" },
+      "maxItems": 500
+    }
+  }
+}

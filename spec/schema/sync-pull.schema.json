@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synccanvas.dev/schema/sync-pull.schema.json",
+  "title": "SYNC_PULL",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "lastSyncedSeq"],
+  "properties": {
+    "type": { "const": "SYNC_PULL" },
+    "lastSyncedSeq": { "type": "integer", "minimum": 0 }
+  }
+}
