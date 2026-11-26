@@ -27,10 +27,6 @@ server/.jqwik-database
 .env.local
 .env.*.local
 
-# Agent local rules & memory
-.agent/
-AGENTS.md
-
 # OS & IDEs
 .DS_Store
 .idea/
