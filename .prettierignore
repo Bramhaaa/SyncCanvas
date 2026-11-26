@@ -1,0 +1,13 @@
+node_modules
+.next
+dist
+build
+*.tsbuildinfo
+server/.gradle
+server/build
+server/.jqwik-database
+pnpm-lock.yaml
+.agent
+PRD.md
+IMPLEMENTATION_PLAN.md
+AGENTS.md
