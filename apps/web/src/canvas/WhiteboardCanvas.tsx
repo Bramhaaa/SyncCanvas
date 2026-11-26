@@ -483,10 +483,6 @@ export function WhiteboardCanvas({
           <>
             <div className="pointer-events-none absolute left-1/2 top-3 z-10 flex -translate-x-1/2 flex-col items-center gap-2">
               <Toolbar activeTool={tool} onSelectTool={setTool} />
-              {presencePeers.length > 0 && (
-                <RemoteSelectionOutlines peers={presencePeers} zoom={vp.viewport.zoom} />
-              )}
-
               {selectedId !== null && (
                 <PropertyBar selectedId={selectedId} onDeleted={() => updateSelection(null)} />
               )}
