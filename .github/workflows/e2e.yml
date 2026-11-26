@@ -1,0 +1,39 @@
+name: Web E2E (Playwright)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/sync-engine/**"
+      - "e2e/web/**"
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web build
+
+      - name: Install Playwright Chromium
+        run: npx -y playwright@1.52.0 install chromium --with-deps
+
+      - name: Start Next.js server and run Playwright tests
+        run: |
+          pnpm --filter web start &
+          SERVER_PID=$!
+          npx wait-on http://localhost:3000 --timeout 30000
+          npx -y playwright@1.52.0 test -c e2e/web/playwright.config.ts
+          kill $SERVER_PID

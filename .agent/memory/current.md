@@ -1,26 +1,22 @@
 # Current Working State
 
 ## Current Feature
-- **Week 1 (CRDT & HLC Core — Gate G1) and Week 2 (Single-Node Backend — Gate G2) complete.** Ready to begin **Week 3 (Client Sync Engine + Canvas)**.
+- **All P0 Weeks 1–6 (`T00`–`T54`) complete.** SyncCanvas is feature-complete for P0 (CRDT core, single- and multi-node Spring Boot backend, offline-first sync engine, infinite canvas, Split-Screen Recruiter Playground, Conflict Demo, CRDT Inspector, compaction/cleanup jobs, prod deploy configs, k6 load test, `/bench` harness, Playwright E2E, README + Architecture docs, demo script).
 
 ## Completed Work
-- **Week 1 (`T00`–`T08`):** Monorepo scaffold, wire protocol spec + 7 JSON Schemas + Ajv tests, 29 golden vectors (`hlc.json`, `merge.json` with JCS SHA-256 hashes), fractional indexing (`zindex.ts`), TS HLC + `LwwMap` + 10k-op chaos simulator, Java CRDT port (`com.synccanvas.crdt.*`) + Java vector & `jqwik` tests proving identical TS/Java hash parity.
-- **Week 2 (`T10`–`T15`):**
-  - `T10` + `T12` (`33a480e`): Flyway `V1__init.sql`, `BoardRepository`, `LimitsProperties`, Jackson wire DTOs (`WsMessage` sealed hierarchy), `OpValidator` (atomic frames, write-once `type`, `CLOCK_SKEW`, `INVALID_FIELD`, `BOARD_FULL` counting tombstones, `rejectedHlcs`), and `TokenBucketRateLimiter`.
-  - `T11` (`2e19aa1`): `OpLogRepository` / `JdbcOpLogRepository` (per-board `FOR UPDATE` row lock, intra-batch & DB dedup, gap-free `next_seq` reservation) + `BoardStateService` lazy cache.
-  - `T13` + `T14` + `T15` (`6c15077`): `BoardBus` / `LocalBoardBus`, `SessionRegistry` (`ConcurrentWebSocketSessionDecorator`), `BoardWebSocketHandler` (`/ws/boards/{boardId}?clientId=`, 64 KiB guard, `SYNC_PUSH`, chunked `SYNC_PULL`, `SNAPSHOT_REQUIRED`, `PRESENCE`), `BoardController` (`POST /api/v1/boards` with 10/min per-IP limit, `GET /snapshot`, `GET /ops` with `410 Gone`, RFC 7807 `ProblemDetail`), MockMvc tests, and PostgreSQL 16 Testcontainers WebSocket ITs covering all 6 `T15` scenarios.
+- **Week 1 (`T00`–`T08`):** Scaffold, wire protocol spec + 7 JSON Schemas, 29 golden vectors (`hlc.json`, `merge.json` with JCS SHA-256), fractional indexing, TS + Java CRDT/HLC parity, 10k-op convergence property tests.
+- **Week 2 (`T10`–`T15`):** Flyway `V1__init.sql`, `BoardRepository`, per-board gap-free `JdbcOpLogRepository` (`FOR UPDATE`), `BoardStateService`, wire DTOs + `OpValidator` + rate limiter, `LocalBoardBus` + `SessionRegistry` + `BoardWebSocketHandler`, REST `BoardController`, and Postgres Testcontainers ITs.
+- **Week 3 (`T20`–`T27`):** `MemoryStorage` + Dexie `IndexedDbStorage`, `WebSocketTransport` + `LoopbackTransport`/`FakeServer`, `SyncClient` (outbox coalescing, per-op ack, gap detection, `SNAPSHOT_REQUIRED` merge), React `SyncProvider`/`useObject`/`useVisibleIds`/`useSyncEvents`, infinite `Viewport`, shapes/selection/resize/toolbar/property bar, RDP freehand, and overlay text editor.
+- **Week 4 (`T30`–`T34`):** `RedisBoardBus` + `BusConfig` + Redis Testcontainers IT, server `PresenceHandler`, client `PresenceClient` + remote cursors/selections, multi-node Docker Compose + Caddy + `server/Dockerfile`, and 6-client Redis-chaos convergence IT (`e2e/multinode/chaos.mjs`).
+- **Week 5 (`T40`–`T45`):** Split-Screen Playground (`/` + `/b/[boardId]` with Local Simulation fallback), Chaos Controls + 6-step Conflict Demo, CRDT Merge Inspector drawer, `SnapshotRepository` + `CompactionJob`, `DemoCleanupJob` + `SecurityHeadersFilter` + Micrometer/Prometheus metrics, and production deploy configs (`deploy/`, `.github/workflows/deploy.yml`, `docs/DEPLOY.md`).
+- **Week 6 (`T50`–`T54`):** k6 1,000-VU WebSocket load test (`loadtest/ws-load.js`, `RESULTS.md`), `/bench` latency + 1,000-object render harness, Playwright E2E suite (`e2e/web/` + `.github/workflows/e2e.yml`), portfolio `README.md` + `docs/ARCHITECTURE.md`, and `docs/demo-script.md`.
 
 ## Next Task
-- **Week 3 — Client Sync Engine + Canvas:**
-  - Start with **`T20` · Storage adapters** (`MemoryStorage` + Dexie `IndexedDbStorage` with shared test suite via `fake-indexeddb`) and **`T21` · Transports** (`WebSocketTransport` with backoff/jitter/offline/latency + `LoopbackTransport` + `FakeServer`) in parallel.
-  - Then **`T22` · `SyncClient`** (outbox, coalescing, per-op ack by HLC `nodeId`, gap detection, `SNAPSHOT_REQUIRED` merge fallback).
+- **Live deployment & benchmark execution** (owner-executed per `docs/DEPLOY.md`: provision Neon + VM + Vercel, run k6 & `/bench` and record real numbers in `loadtest/RESULTS.md` + `README.md`, record 90s demo video).
+- **Optional P1 stretch (`T60`–`T65`):** ownership-checked undo/redo, multi-select + duplicate, sticky/diamond toolbar tools, 1,000-object 60 FPS culling pass, PNG/SVG export.
 
 ## Blockers
-- Docker Desktop is stopped on this machine — Testcontainers ITs (`BoardRepositoryTest`, `OpLogRepositoryTest`, `BackendIntegrationTest`) are skipped locally via `@Testcontainers(disabledWithoutDocker = true)` and run automatically in GitHub Actions CI or once Docker Desktop is started.
+- None.
 
 ## Branch
-- `main` (clean working tree, pushed and synced with `origin/main` at `6c15077`). Owner commits directly to `main`.
-
-## Notes
-- Last verified: TS (`pnpm format:check && pnpm -r lint && pnpm -r typecheck && pnpm -r test`: 62/62 passed) and Java (`cd server && ./gradlew check --rerun-tasks`: `BUILD SUCCESSFUL`).
-- `.agent/` and `AGENTS.md` are git-ignored and local-only.
+- `main` (synced with `origin/main`).

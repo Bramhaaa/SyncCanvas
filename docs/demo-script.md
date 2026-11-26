@@ -1,0 +1,19 @@
+# SyncCanvas — 90-Second Demo Script & Résumé Bullets
+
+## 90-Second Demo Shot List
+
+| Time          | Scene                                                                        | Narration / Key Point                                                                                                                                                                                                                                                                                             |
+| ------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0:00–0:10** | Full browser window on `/` (Split-Screen Playground)                         | "SyncCanvas is an offline-first collaborative whiteboard built on a custom field-level LWW-Map CRDT and Hybrid Logical Clocks — no Yjs, no Automerge — with identical merge semantics in TypeScript and Java."                                                                                                    |
+| **0:10–0:25** | Draw a rectangle in User A; watch remote cursor + instant sync in User B     | "Edits apply locally in 0ms to IndexedDB, flush in coalesced batches over WebSockets, and fan out across Spring Boot nodes via Redis Pub/Sub."                                                                                                                                                                    |
+| **0:25–0:50** | Click **⚡ Run Conflict Demo** with CRDT Merge Inspector open                | "Now watch what happens during a network partition: we cut User A's network, A moves the blue rectangle offline while B recolors it online. When A reconnects, both the new position and new color survive, the Inspector shows every HLC and seq, and both panes converge to the exact same SHA-256 state hash." |
+| **0:50–1:15** | Quick pan to `spec/vectors/merge.json` + Architecture diagram in `README.md` | "Under the hood, PostgreSQL reserves gap-free per-board sequence numbers with row-level `FOR UPDATE` locks, clients recover from Redis drops via gap detection and snapshot merging, and 29 RFC 8785 JCS golden vectors plus 10,000-op chaos property tests prove TS and Java parity."                            |
+| **1:15–1:30** | Show `/bench` or `loadtest/RESULTS.md` + live URL                            | "Backed by Virtual Threads on Java 21, 1,000-VU k6 load tests, and per-object React `useSyncExternalStore` render isolation. Try the live playground yourself at the link below."                                                                                                                                 |
+
+---
+
+## Résumé Bullets (fill in measured numbers from `loadtest/RESULTS.md`)
+
+1. **Built** SyncCanvas, an offline-first collaborative whiteboard powered by a custom field-level LWW-Map CRDT and Hybrid Logical Clocks in TypeScript and Java, **achieving** 100% cross-language convergence verified across 29 RFC 8785 JCS SHA-256 golden vectors and 10,000-op property-based chaos simulations.
+2. **Engineered** a horizontally scalable Java 21 / Spring Boot 3 WebSocket sync backend using per-board `FOR UPDATE` gap-free sequencing in PostgreSQL 16, Redis 7 Pub/Sub fan-out, and snapshot compaction, **sustaining** _[X]_ concurrent WebSocket clients at _[Y]_ ms p95 cross-node broadcast latency.
+3. **Designed** a zero-login Split-Screen Recruiter Playground in Next.js 15 / React 19 with IndexedDB outbox coalescing (600 drag ops → 2 frames), simulated network partitions, and per-object `useSyncExternalStore` subscriptions, **maintaining** _[Z]%_ <16.7ms frame times across 1,000 canvas objects.
