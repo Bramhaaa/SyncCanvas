@@ -1,0 +1,17 @@
+{
+	auto_https off
+}
+
+:8080 {
+	reverse_proxy /ws/* server1:8080 server2:8080 {
+		lb_policy round_robin
+	}
+
+	reverse_proxy /api/* server1:8080 server2:8080 {
+		lb_policy round_robin
+	}
+
+	reverse_proxy /actuator/* server1:8080 server2:8080 {
+		lb_policy round_robin
+	}
+}

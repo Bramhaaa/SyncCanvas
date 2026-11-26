@@ -47,13 +47,11 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
     private final OpValidator opValidator;
     private final BoardBus boardBus;
     private final SessionRegistry sessionRegistry;
+    private final PresenceHandler presenceHandler;
     private final LimitsProperties limits;
     private final ObjectMapper objectMapper;
 
-    private final ConcurrentHashMap<String, SessionRateLimiters> limiters = new ConcurrentHashMap<>();
-
-    private record SessionRateLimiters(
-            TokenBucketRateLimiter pushLimiter, TokenBucketRateLimiter presenceLimiter) {}
+    private final ConcurrentHashMap<String, TokenBucketRateLimiter> pushLimiters = new ConcurrentHashMap<>();
 
     public BoardWebSocketHandler(
             BoardRepository boardRepository,
@@ -62,6 +60,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
             OpValidator opValidator,
             BoardBus boardBus,
             SessionRegistry sessionRegistry,
+            PresenceHandler presenceHandler,
             LimitsProperties limits,
             ObjectMapper objectMapper) {
         this.boardRepository = boardRepository;
@@ -70,6 +69,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
         this.opValidator = opValidator;
         this.boardBus = boardBus;
         this.sessionRegistry = sessionRegistry;
+        this.presenceHandler = presenceHandler;
         this.limits = limits;
         this.objectMapper = objectMapper;
     }
@@ -96,12 +96,11 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        sessionRegistry.register(boardId, clientId, session);
-        limiters.put(
+        SessionRegistry.RegisteredSession reg = sessionRegistry.register(boardId, clientId, session);
+        pushLimiters.put(
                 session.getId(),
-                new SessionRateLimiters(
-                        new TokenBucketRateLimiter(limits.syncPushPerSecond(), System::currentTimeMillis),
-                        new TokenBucketRateLimiter(limits.presencePerSecond(), System::currentTimeMillis)));
+                new TokenBucketRateLimiter(limits.syncPushPerSecond(), System::currentTimeMillis));
+        presenceHandler.onSessionOpened(reg);
     }
 
     @Override
@@ -145,13 +144,14 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessionRegistry.unregister(session.getId());
-        limiters.remove(session.getId());
+        SessionRegistry.RegisteredSession removed = sessionRegistry.unregister(session.getId());
+        pushLimiters.remove(session.getId());
+        presenceHandler.onSessionClosed(removed);
     }
 
     private void handleSyncPush(SessionRegistry.RegisteredSession reg, SyncPushMessage push) {
-        SessionRateLimiters rl = limiters.get(reg.sessionId());
-        if (rl != null && !rl.pushLimiter().tryAcquire()) {
+        TokenBucketRateLimiter pushLimiter = pushLimiters.get(reg.sessionId());
+        if (pushLimiter != null && !pushLimiter.tryAcquire()) {
             sessionRegistry.sendMessage(
                     reg.session(),
                     new ErrorMessage(ProtocolErrorCode.RATE_LIMITED, "SYNC_PUSH rate limit exceeded"));
@@ -251,14 +251,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handlePresence(SessionRegistry.RegisteredSession reg, PresenceMessage presence) {
-        SessionRateLimiters rl = limiters.get(reg.sessionId());
-        if (rl != null && !rl.presenceLimiter().tryAcquire()) {
-            return;
-        }
-        if (!reg.clientId().equals(presence.clientId())) {
-            return;
-        }
-        boardBus.publishPresence(reg.boardId(), presence);
+        presenceHandler.handlePresence(reg, presence);
     }
 
     private int estimateOpBytes(Op op) {

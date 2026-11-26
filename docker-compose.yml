@@ -27,5 +27,73 @@ services:
       timeout: 5s
       retries: 10
 
+  server1:
+    profiles: ["multinode"]
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: synccanvas-server1
+    environment:
+      INSTANCE_ID: server1
+      SYNCCANVAS_BUS: redis
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/synccanvas
+      SPRING_DATASOURCE_USERNAME: synccanvas
+      SPRING_DATASOURCE_PASSWORD: synccanvas
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server2:
+    profiles: ["multinode"]
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: synccanvas-server2
+    environment:
+      INSTANCE_ID: server2
+      SYNCCANVAS_BUS: redis
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/synccanvas
+      SPRING_DATASOURCE_USERNAME: synccanvas
+      SPRING_DATASOURCE_PASSWORD: synccanvas
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    ports:
+      - "8082:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  caddy:
+    profiles: ["multinode"]
+    image: caddy:2-alpine
+    container_name: synccanvas-caddy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      server1:
+        condition: service_healthy
+      server2:
+        condition: service_healthy
+
 volumes:
   postgres_data:

@@ -21,3 +21,11 @@ export {
   type WebSocketTransportOptions,
 } from "./transport/index.js";
 export { createSyncClient } from "./sync-client.js";
+export {
+  colorFromNodeId,
+  createPresenceClient,
+  type PresenceClient,
+  type PresenceClientOptions,
+  type PresenceUpdate,
+  type RemotePeer,
+} from "./presence.js";

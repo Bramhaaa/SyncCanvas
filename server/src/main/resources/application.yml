@@ -26,3 +26,15 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: synccanvas-server
+    instanceId: ${INSTANCE_ID:local}
+
+synccanvas:
+  bus: ${SYNCCANVAS_BUS:local}
+  instance-id: ${INSTANCE_ID:}

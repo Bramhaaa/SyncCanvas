@@ -1,11 +1,12 @@
 "use client";
 
-import { bringToFront, type Op, type Point } from "@synccanvas/sync-engine";
+import { bringToFront, type Op, type Point, type RemotePeer } from "@synccanvas/sync-engine";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PropertyBar } from "@/components/PropertyBar";
 import { Toolbar } from "@/components/Toolbar";
 import { useObject, useSyncClient, useVisibleIds } from "@/sync";
 import { normalizeFreehandPoints, pointsToSmoothSvgPath } from "./freehand";
+import { RemoteCursorsOverlay, RemoteSelectionOutlines } from "./presence";
 import { SelectionOverlay } from "./selection/SelectionOverlay";
 import { ShapeNode } from "./shapes/ShapeNode";
 import { TextEditorOverlay } from "./text";
@@ -51,9 +52,17 @@ type InteractionState =
 export interface WhiteboardCanvasProps {
   /** Optional external callback when selection changes (used by presence / inspector). */
   onSelectionChange?: (selectedId: string | null) => void;
+  /** Optional remote peers to render cursors and selection outlines for (T32). */
+  presencePeers?: RemotePeer[];
+  /** Optional callback receiving world coordinates on pointer move (T32). */
+  onCursorMove?: (world: WorldPoint | null) => void;
 }
 
-export function WhiteboardCanvas({ onSelectionChange }: WhiteboardCanvasProps) {
+export function WhiteboardCanvas({
+  onSelectionChange,
+  presencePeers = [],
+  onCursorMove,
+}: WhiteboardCanvasProps) {
   const client = useSyncClient();
   const visibleIds = useVisibleIds();
   const vp = useViewport();
@@ -281,6 +290,9 @@ export function WhiteboardCanvas({ onSelectionChange }: WhiteboardCanvasProps) {
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (onCursorMove) {
+        onCursorMove(eventToWorld(e.clientX, e.clientY));
+      }
       if (vp.movePan(e)) return;
 
       const state = interactionRef.current;
@@ -390,7 +402,7 @@ export function WhiteboardCanvas({ onSelectionChange }: WhiteboardCanvasProps) {
         ]);
       }
     },
-    [client, eventToWorld, vp],
+    [client, eventToWorld, onCursorMove, vp],
   );
 
   const handlePointerUp = useCallback(() => {
@@ -449,25 +461,32 @@ export function WhiteboardCanvas({ onSelectionChange }: WhiteboardCanvasProps) {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         overlay={
-          editingTextId !== null && editingObj !== undefined ? (
-            <TextEditorOverlay
-              x={asNumber(editingObj.x, 0)}
-              y={asNumber(editingObj.y, 0)}
-              initialText={asString(editingObj.text, "")}
-              fontSize={asNumber(editingObj.fontSize, 16)}
-              color={asString(editingObj.stroke, "#1f2937")}
-              onCommit={(text) => {
-                client.mutate([{ objectId: editingTextId, field: "text", value: text }]);
-                setEditingTextId(null);
-              }}
-              onCancel={() => setEditingTextId(null)}
-            />
-          ) : undefined
+          <>
+            {presencePeers.length > 0 && <RemoteCursorsOverlay peers={presencePeers} />}
+            {editingTextId !== null && editingObj !== undefined && (
+              <TextEditorOverlay
+                x={asNumber(editingObj.x, 0)}
+                y={asNumber(editingObj.y, 0)}
+                initialText={asString(editingObj.text, "")}
+                fontSize={asNumber(editingObj.fontSize, 16)}
+                color={asString(editingObj.stroke, "#1f2937")}
+                onCommit={(text) => {
+                  client.mutate([{ objectId: editingTextId, field: "text", value: text }]);
+                  setEditingTextId(null);
+                }}
+                onCancel={() => setEditingTextId(null)}
+              />
+            )}
+          </>
         }
         hud={
           <>
             <div className="pointer-events-none absolute left-1/2 top-3 z-10 flex -translate-x-1/2 flex-col items-center gap-2">
               <Toolbar activeTool={tool} onSelectTool={setTool} />
+              {presencePeers.length > 0 && (
+                <RemoteSelectionOutlines peers={presencePeers} zoom={vp.viewport.zoom} />
+              )}
+
               {selectedId !== null && (
                 <PropertyBar selectedId={selectedId} onDeleted={() => updateSelection(null)} />
               )}
@@ -522,6 +541,10 @@ export function WhiteboardCanvas({ onSelectionChange }: WhiteboardCanvasProps) {
             strokeLinejoin="round"
             pointerEvents="none"
           />
+        )}
+
+        {presencePeers.length > 0 && (
+          <RemoteSelectionOutlines peers={presencePeers} zoom={vp.viewport.zoom} />
         )}
 
         {selectedId !== null && (
