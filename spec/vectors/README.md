@@ -29,4 +29,4 @@ Each entry has:
 - `ops`: ordered list of `Op` objects to apply sequentially
 - `expectState`: expected `SnapshotState` (`Record<objectId, Record<field, { value, hlc }>>`)
 - `expectVisibleIds` _(optional)_: expected result of `visibleObjectIds()`
-- `expectHash`: expected lowercase hex SHA-256 of the RFC 8785 JCS canonical sorted register array (currently `""`; populated once `T04` implements `stateHash()` and verified identically by `T07` in Java)
+- `expectHash`: expected lowercase hex SHA-256 of the RFC 8785 JCS canonical sorted register array (verified identically by TypeScript in `T04` and Java in `T07`)

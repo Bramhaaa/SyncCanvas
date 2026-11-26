@@ -18,11 +18,17 @@
     ],
     "expectState": {
       "obj_1": {
-        "x": { "value": 120, "hlc": "0000000001000:00000:user_a" },
-        "fill": { "value": "#3B82F6", "hlc": "0000000001000:00000:user_b" }
+        "x": {
+          "value": 120,
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "fill": {
+          "value": "#3B82F6",
+          "hlc": "0000000001000:00000:user_b"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "b81888d071b0670ecada7b0db7d61831c5e0144a6944fc42b9587375b93142c8"
   },
   {
     "name": "higher physicalTime wins on same field",
@@ -43,10 +49,13 @@
     ],
     "expectState": {
       "obj_1": {
-        "x": { "value": 20, "hlc": "0000000002000:00000:user_a" }
+        "x": {
+          "value": 20,
+          "hlc": "0000000002000:00000:user_a"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "764467ddc0e18addc74ceb7ca1c069df245f0453d04f44b0b84de026cf81d2ab"
   },
   {
     "name": "higher counter wins when physicalTime ties",
@@ -67,10 +76,13 @@
     ],
     "expectState": {
       "obj_1": {
-        "x": { "value": 20, "hlc": "0000000001000:00002:user_a" }
+        "x": {
+          "value": 20,
+          "hlc": "0000000001000:00002:user_a"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "3b2ec22825add7a66d57c175b57d1e1dd8cb98ef3f4a59bf09a4c5902f371360"
   },
   {
     "name": "nodeId tie-break when physicalTime and counter tie",
@@ -91,10 +103,13 @@
     ],
     "expectState": {
       "obj_1": {
-        "fill": { "value": "#3B82F6", "hlc": "0000000001000:00001:user_b" }
+        "fill": {
+          "value": "#3B82F6",
+          "hlc": "0000000001000:00001:user_b"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "133240ec8adefbc16fe815a83a492475ca402f50f886f2d150e2c661b0b55350"
   },
   {
     "name": "idempotent: same op applied twice leaves state unchanged",
@@ -115,10 +130,13 @@
     ],
     "expectState": {
       "obj_1": {
-        "x": { "value": 42, "hlc": "0000000001000:00000:user_a" }
+        "x": {
+          "value": 42,
+          "hlc": "0000000001000:00000:user_a"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "e7e70a7771aaa06d2824567d807ad4ebdca4c7777e28a2886b017d89e3270abe"
   },
   {
     "name": "stale op with lower HLC is discarded",
@@ -139,10 +157,13 @@
     ],
     "expectState": {
       "obj_1": {
-        "y": { "value": 250, "hlc": "0000000002000:00000:user_b" }
+        "y": {
+          "value": 250,
+          "hlc": "0000000002000:00000:user_b"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "6132e57a42d03e493b27409a675d2b0a3b104c89dd1511c0dcea22900f18eac0"
   },
   {
     "name": "commutative: forward order",
@@ -175,11 +196,17 @@
     ],
     "expectState": {
       "obj_1": {
-        "x": { "value": 30, "hlc": "0000000001000:00000:user_b" },
-        "y": { "value": 50, "hlc": "0000000002000:00000:user_a" }
+        "x": {
+          "value": 30,
+          "hlc": "0000000001000:00000:user_b"
+        },
+        "y": {
+          "value": 50,
+          "hlc": "0000000002000:00000:user_a"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "c43350fe1aac9b1f27edee5bfd93856fd52ec89ccfd8aaa907a4be3e2b0bf5d6"
   },
   {
     "name": "commutative: reversed order",
@@ -212,11 +239,17 @@
     ],
     "expectState": {
       "obj_1": {
-        "x": { "value": 30, "hlc": "0000000001000:00000:user_b" },
-        "y": { "value": 50, "hlc": "0000000002000:00000:user_a" }
+        "x": {
+          "value": 30,
+          "hlc": "0000000001000:00000:user_b"
+        },
+        "y": {
+          "value": 50,
+          "hlc": "0000000002000:00000:user_a"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "c43350fe1aac9b1f27edee5bfd93856fd52ec89ccfd8aaa907a4be3e2b0bf5d6"
   },
   {
     "name": "delete-wins over concurrent edit to another field",
@@ -255,14 +288,26 @@
     ],
     "expectState": {
       "obj_1": {
-        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
-        "x": { "value": 99, "hlc": "0000000003000:00000:user_b" },
-        "zIndex": { "value": "a0", "hlc": "0000000001000:00002:user_a" },
-        "deleted": { "value": true, "hlc": "0000000002000:00000:user_a" }
+        "type": {
+          "value": "rect",
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "x": {
+          "value": 99,
+          "hlc": "0000000003000:00000:user_b"
+        },
+        "zIndex": {
+          "value": "a0",
+          "hlc": "0000000001000:00002:user_a"
+        },
+        "deleted": {
+          "value": true,
+          "hlc": "0000000002000:00000:user_a"
+        }
       }
     },
     "expectVisibleIds": [],
-    "expectHash": ""
+    "expectHash": "90139077d998fcb97d679de156e7e22edef04361d5cdbe433debd4e2b850b441"
   },
   {
     "name": "undelete with greater HLC restores visibility",
@@ -295,13 +340,22 @@
     ],
     "expectState": {
       "obj_1": {
-        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
-        "zIndex": { "value": "a0", "hlc": "0000000001000:00001:user_a" },
-        "deleted": { "value": false, "hlc": "0000000003000:00000:user_a" }
+        "type": {
+          "value": "rect",
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "zIndex": {
+          "value": "a0",
+          "hlc": "0000000001000:00001:user_a"
+        },
+        "deleted": {
+          "value": false,
+          "hlc": "0000000003000:00000:user_a"
+        }
       }
     },
     "expectVisibleIds": ["obj_1"],
-    "expectHash": ""
+    "expectHash": "a52e8d55dcba0a8684fcf6c8158e18efe55c151ea32e235d1e3a49c96f5ee396"
   },
   {
     "name": "object without type register is excluded from visibleObjectIds",
@@ -322,12 +376,18 @@
     ],
     "expectState": {
       "obj_orphan": {
-        "x": { "value": 50, "hlc": "0000000001000:00000:user_a" },
-        "zIndex": { "value": "a0", "hlc": "0000000001000:00001:user_a" }
+        "x": {
+          "value": 50,
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "zIndex": {
+          "value": "a0",
+          "hlc": "0000000001000:00001:user_a"
+        }
       }
     },
     "expectVisibleIds": [],
-    "expectHash": ""
+    "expectHash": "ad09290040c61bd37c245dffa82b5c2d17b90e5b3109837d02c9c81694e33f85"
   },
   {
     "name": "zIndex tie breaks deterministically by objectId",
@@ -372,20 +432,38 @@
     ],
     "expectState": {
       "obj_a": {
-        "type": { "value": "rect", "hlc": "0000000001000:00004:user_b" },
-        "zIndex": { "value": "a0", "hlc": "0000000001000:00005:user_b" }
+        "type": {
+          "value": "rect",
+          "hlc": "0000000001000:00004:user_b"
+        },
+        "zIndex": {
+          "value": "a0",
+          "hlc": "0000000001000:00005:user_b"
+        }
       },
       "obj_b": {
-        "type": { "value": "ellipse", "hlc": "0000000001000:00002:user_a" },
-        "zIndex": { "value": "a0", "hlc": "0000000001000:00003:user_a" }
+        "type": {
+          "value": "ellipse",
+          "hlc": "0000000001000:00002:user_a"
+        },
+        "zIndex": {
+          "value": "a0",
+          "hlc": "0000000001000:00003:user_a"
+        }
       },
       "obj_c": {
-        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
-        "zIndex": { "value": "a1", "hlc": "0000000001000:00001:user_a" }
+        "type": {
+          "value": "rect",
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "zIndex": {
+          "value": "a1",
+          "hlc": "0000000001000:00001:user_a"
+        }
       }
     },
     "expectVisibleIds": ["obj_a", "obj_b", "obj_c"],
-    "expectHash": ""
+    "expectHash": "e947a54e38453b0e70d0d37e3e8c1604ef2f282fc5011e36056398c349e42f5a"
   },
   {
     "name": "float and integer numeric values for JCS hash parity",
@@ -400,7 +478,7 @@
       {
         "objectId": "obj_num",
         "field": "y",
-        "value": 420.0,
+        "value": 420,
         "hlc": "0000000001000:00001:user_a"
       },
       {
@@ -418,13 +496,25 @@
     ],
     "expectState": {
       "obj_num": {
-        "x": { "value": 420, "hlc": "0000000001000:00000:user_a" },
-        "y": { "value": 420, "hlc": "0000000001000:00001:user_a" },
-        "opacity": { "value": 0.5, "hlc": "0000000001000:00002:user_a" },
-        "strokeWidth": { "value": 1.25, "hlc": "0000000001000:00003:user_a" }
+        "x": {
+          "value": 420,
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "y": {
+          "value": 420,
+          "hlc": "0000000001000:00001:user_a"
+        },
+        "opacity": {
+          "value": 0.5,
+          "hlc": "0000000001000:00002:user_a"
+        },
+        "strokeWidth": {
+          "value": 1.25,
+          "hlc": "0000000001000:00003:user_a"
+        }
       }
     },
-    "expectHash": ""
+    "expectHash": "c80cbb7ce63e048a6116b7ddb1c14183413027730c80558afa9c372c7c5d3993"
   },
   {
     "name": "freehand points array value",
@@ -467,10 +557,22 @@
     ],
     "expectState": {
       "obj_stroke": {
-        "type": { "value": "freehand", "hlc": "0000000001000:00000:user_a" },
-        "x": { "value": 10, "hlc": "0000000001000:00001:user_a" },
-        "y": { "value": 20, "hlc": "0000000001000:00002:user_a" },
-        "zIndex": { "value": "a0", "hlc": "0000000001000:00003:user_a" },
+        "type": {
+          "value": "freehand",
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "x": {
+          "value": 10,
+          "hlc": "0000000001000:00001:user_a"
+        },
+        "y": {
+          "value": 20,
+          "hlc": "0000000001000:00002:user_a"
+        },
+        "zIndex": {
+          "value": "a0",
+          "hlc": "0000000001000:00003:user_a"
+        },
         "points": {
           "value": [
             [0, 0],
@@ -482,7 +584,7 @@
       }
     },
     "expectVisibleIds": ["obj_stroke"],
-    "expectHash": ""
+    "expectHash": "91a201e9a7d51bc8a0d1dd52066fadf5cfce623189c8437bc37c718136174891"
   },
   {
     "name": "multi-object board with mixed types and a tombstone",
@@ -539,21 +641,45 @@
     ],
     "expectState": {
       "obj_1": {
-        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
-        "zIndex": { "value": "a1", "hlc": "0000000001000:00001:user_a" }
+        "type": {
+          "value": "rect",
+          "hlc": "0000000001000:00000:user_a"
+        },
+        "zIndex": {
+          "value": "a1",
+          "hlc": "0000000001000:00001:user_a"
+        }
       },
       "obj_2": {
-        "type": { "value": "text", "hlc": "0000000001000:00002:user_a" },
-        "text": { "value": "Hello", "hlc": "0000000001000:00003:user_a" },
-        "zIndex": { "value": "a0", "hlc": "0000000001000:00004:user_a" },
-        "deleted": { "value": true, "hlc": "0000000002000:00000:user_b" }
+        "type": {
+          "value": "text",
+          "hlc": "0000000001000:00002:user_a"
+        },
+        "text": {
+          "value": "Hello",
+          "hlc": "0000000001000:00003:user_a"
+        },
+        "zIndex": {
+          "value": "a0",
+          "hlc": "0000000001000:00004:user_a"
+        },
+        "deleted": {
+          "value": true,
+          "hlc": "0000000002000:00000:user_b"
+        }
       },
       "obj_3": {
-        "type": { "value": "arrow", "hlc": "0000000001500:00000:user_b" },
-        "zIndex": { "value": "a0V", "hlc": "0000000001500:00001:user_b" }
+        "type": {
+          "value": "arrow",
+          "hlc": "0000000001500:00000:user_b"
+        },
+        "zIndex": {
+          "value": "a0V",
+          "hlc": "0000000001500:00001:user_b"
+        }
       }
     },
     "expectVisibleIds": ["obj_3", "obj_1"],
-    "expectHash": ""
+    "expectHash": "4d7d855c17afad11aa80955eec24c46a6711330c3588acc8e756af5fc6b0d4b7"
   }
 ]

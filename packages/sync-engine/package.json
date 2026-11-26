@@ -27,6 +27,7 @@
     "vitest": "^3.1.2"
   },
   "dependencies": {
+    "canonicalize": "^2.0.0",
     "fractional-indexing": "^3.2.0"
   }
 }

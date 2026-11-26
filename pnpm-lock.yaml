@@ -63,6 +63,9 @@ importers:
 
   packages/sync-engine:
     dependencies:
+      canonicalize:
+        specifier: ^2.0.0
+        version: 2.1.0
       fractional-indexing:
         specifier: ^3.2.0
         version: 3.4.0
@@ -1121,6 +1124,10 @@ packages:
 
   caniuse-lite@1.0.30001828:
     resolution: {integrity: sha512-7MWeT+3DlrpuDybTWHl4Zb1Z80Z1fLLnOXuBjDXebzDVcqnEWUlV8JcbASg8B8BhcW8QT2UiR1KAtzYFIZHZYA==}
+
+  canonicalize@2.1.0:
+    resolution: {integrity: sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==}
+    hasBin: true
 
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
@@ -3230,6 +3237,8 @@ snapshots:
   callsites@3.1.0: {}
 
   caniuse-lite@1.0.30001828: {}
+
+  canonicalize@2.1.0: {}
 
   chai@5.3.3:
     dependencies:
