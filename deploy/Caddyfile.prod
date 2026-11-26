@@ -1,0 +1,15 @@
+{$API_DOMAIN} {
+	encode gzip
+
+	reverse_proxy /ws/* server1:8080 server2:8080 {
+		lb_policy round_robin
+	}
+
+	reverse_proxy /api/* server1:8080 server2:8080 {
+		lb_policy round_robin
+	}
+
+	reverse_proxy /actuator/health server1:8080 server2:8080 {
+		lb_policy round_robin
+	}
+}

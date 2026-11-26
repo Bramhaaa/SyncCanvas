@@ -1,0 +1,452 @@
+"use client";
+
+import {
+  createFakeServer,
+  createHlcClock,
+  createIndexedDbStorage,
+  createMemoryStorage,
+  createPresenceClient,
+  createSyncClient,
+  createWebSocketTransport,
+  type PresenceClient,
+  type RemotePeer,
+  type SyncClient,
+} from "@synccanvas/sync-engine";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { WhiteboardCanvas } from "@/canvas/WhiteboardCanvas";
+import { CrdtInspector, type InspectorEntry } from "@/inspector/CrdtInspector";
+import { SyncProvider, useConnStatus, useOutboxDepth } from "@/sync";
+import { PaneHeader } from "./chaos/ChaosControls";
+import { runConflictDemo, seedStarterBoard } from "./chaos/conflict-demo";
+
+interface PaneRuntime {
+  client: SyncClient;
+  presence: PresenceClient;
+}
+
+function PlaygroundPane({
+  label,
+  accentClass,
+  paneId,
+  runtime,
+  online,
+  latencyMs,
+  stateHash,
+  onToggleOnline,
+  onChangeLatency,
+}: {
+  label: string;
+  accentClass: string;
+  paneId: string;
+  runtime: PaneRuntime;
+  online: boolean;
+  latencyMs: number;
+  stateHash: string;
+  onToggleOnline: () => void;
+  onChangeLatency: (ms: number) => void;
+}) {
+  const status = useConnStatus();
+  const outboxDepth = useOutboxDepth();
+  const [peers, setPeers] = useState<RemotePeer[]>([]);
+
+  useEffect(() => {
+    const unsub = runtime.presence.subscribe(() => {
+      setPeers(runtime.presence.getPeers());
+    });
+    return unsub;
+  }, [runtime.presence]);
+
+  const handleCursorMove = useCallback(
+    (world: { x: number; y: number } | null) => {
+      runtime.presence.update({ cursor: world });
+    },
+    [runtime.presence],
+  );
+
+  const handleSelectionChange = useCallback(
+    (selectedId: string | null) => {
+      runtime.presence.update({ selectedIds: selectedId ? [selectedId] : [] });
+    },
+    [runtime.presence],
+  );
+
+  return (
+    <div
+      data-testid={`pane-${paneId}`}
+      data-state-hash={stateHash}
+      className="flex min-h-[380px] flex-1 flex-col overflow-hidden border border-neutral-200 bg-white"
+    >
+      <PaneHeader
+        label={label}
+        accentClass={accentClass}
+        status={status}
+        online={online}
+        outboxDepth={outboxDepth}
+        stateHash={stateHash}
+        latencyMs={latencyMs}
+        onToggleOnline={onToggleOnline}
+        onChangeLatency={onChangeLatency}
+      />
+      <div className="relative flex-1">
+        <WhiteboardCanvas
+          presencePeers={peers}
+          onCursorMove={handleCursorMove}
+          onSelectionChange={handleSelectionChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function PlaygroundView() {
+  const [boardId, setBoardId] = useState<string>("");
+  const [mode, setMode] = useState<"loading" | "backend" | "local">("loading");
+  const [runtimes, setRuntimes] = useState<{ a: PaneRuntime; b: PaneRuntime } | null>(null);
+  const [onlineA, setOnlineA] = useState(true);
+  const [onlineB, setOnlineB] = useState(true);
+  const [latencyA, setLatencyA] = useState(0);
+  const [latencyB, setLatencyB] = useState(0);
+  const [hashA, setHashA] = useState("");
+  const [hashB, setHashB] = useState("");
+  const [entries, setEntries] = useState<InspectorEntry[]>([]);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [demoRunning, setDemoRunning] = useState(false);
+  const [demoCaption, setDemoCaption] = useState<string | null>(null);
+  const [fullScreen, setFullScreen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const entryIdRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let cleanupFn: (() => void) | null = null;
+
+    async function boot() {
+      const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080").replace(
+        /\/$/,
+        "",
+      );
+      const wsUrl = (process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080").replace(/\/$/, "");
+
+      let resolvedBoardId = "";
+      let useBackend = false;
+
+      try {
+        const res = await fetch(`${apiUrl}/api/v1/boards`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: "Recruiter Playground", isDemo: true }),
+          signal: AbortSignal.timeout(2_500),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { boardId: string };
+          resolvedBoardId = data.boardId;
+          useBackend = true;
+        }
+      } catch {
+        // Backend unreachable -> fall back to local FakeServer simulation
+      }
+
+      if (cancelled) return;
+
+      const nodeA = `user_a_${Math.random().toString(36).slice(2, 6)}`;
+      const nodeB = `user_b_${Math.random().toString(36).slice(2, 6)}`;
+
+      let clientA: SyncClient;
+      let clientB: SyncClient;
+
+      if (useBackend) {
+        const storageA = createIndexedDbStorage({
+          boardId: resolvedBoardId,
+          paneId: "a",
+          nodeId: nodeA,
+        });
+        const storageB = createIndexedDbStorage({
+          boardId: resolvedBoardId,
+          paneId: "b",
+          nodeId: nodeB,
+        });
+        const transportA = createWebSocketTransport(
+          `${wsUrl}/ws/boards/${resolvedBoardId}?clientId=${nodeA}`,
+        );
+        const transportB = createWebSocketTransport(
+          `${wsUrl}/ws/boards/${resolvedBoardId}?clientId=${nodeB}`,
+        );
+        clientA = createSyncClient({
+          boardId: resolvedBoardId,
+          nodeId: nodeA,
+          storage: storageA,
+          transport: transportA,
+          clock: createHlcClock({ nodeId: nodeA, now: () => Date.now() }),
+          apiBaseUrl: apiUrl,
+        });
+        clientB = createSyncClient({
+          boardId: resolvedBoardId,
+          nodeId: nodeB,
+          storage: storageB,
+          transport: transportB,
+          clock: createHlcClock({ nodeId: nodeB, now: () => Date.now() }),
+          apiBaseUrl: apiUrl,
+        });
+      } else {
+        resolvedBoardId = `brd_local${Math.random().toString(36).slice(2, 6)}`;
+        const fakeServer = createFakeServer();
+        clientA = createSyncClient({
+          boardId: resolvedBoardId,
+          nodeId: nodeA,
+          storage: createMemoryStorage({ nodeId: nodeA }),
+          transport: fakeServer.createTransport(nodeA),
+          clock: createHlcClock({ nodeId: nodeA, now: () => Date.now() }),
+          fetchSnapshot: async () => fakeServer.getSnapshot(),
+        });
+        clientB = createSyncClient({
+          boardId: resolvedBoardId,
+          nodeId: nodeB,
+          storage: createMemoryStorage({ nodeId: nodeB }),
+          transport: fakeServer.createTransport(nodeB),
+          clock: createHlcClock({ nodeId: nodeB, now: () => Date.now() }),
+          fetchSnapshot: async () => fakeServer.getSnapshot(),
+        });
+      }
+
+      const presenceA = createPresenceClient({
+        transport: clientA.transport,
+        clientId: nodeA,
+        displayName: "User A",
+        color: "#2563eb",
+      });
+      const presenceB = createPresenceClient({
+        transport: clientB.transport,
+        clientId: nodeB,
+        displayName: "User B",
+        color: "#db2777",
+      });
+
+      const recordEvent = (
+        pane: "A" | "B",
+        event: Parameters<Parameters<SyncClient["on"]>[0]>[0],
+      ) => {
+        if (event.kind === "outbox" || event.kind === "status") return;
+        const now = new Date();
+        const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+        entryIdRef.current += 1;
+        const entry: InspectorEntry = { id: entryIdRef.current, pane, timestamp: ts, event };
+        setEntries((prev) =>
+          prev.length >= 250 ? [...prev.slice(-249), entry] : [...prev, entry],
+        );
+
+        if (event.kind === "local_op" || event.kind === "remote_op") {
+          void clientA.map.stateHash().then(setHashA);
+          void clientB.map.stateHash().then(setHashB);
+        }
+      };
+
+      const unsubA = clientA.on((e) => recordEvent("A", e));
+      const unsubB = clientB.on((e) => recordEvent("B", e));
+
+      await Promise.all([clientA.start(), clientB.start()]);
+      presenceA.start();
+      presenceB.start();
+
+      seedStarterBoard(clientA);
+      const [hA, hB] = await Promise.all([clientA.map.stateHash(), clientB.map.stateHash()]);
+
+      if (cancelled) {
+        unsubA();
+        unsubB();
+        presenceA.stop();
+        presenceB.stop();
+        await Promise.all([clientA.stop(), clientB.stop()]);
+        return;
+      }
+
+      setBoardId(resolvedBoardId);
+      setMode(useBackend ? "backend" : "local");
+      setHashA(hA);
+      setHashB(hB);
+      setRuntimes({
+        a: { client: clientA, presence: presenceA },
+        b: { client: clientB, presence: presenceB },
+      });
+
+      cleanupFn = () => {
+        unsubA();
+        unsubB();
+        presenceA.stop();
+        presenceB.stop();
+        void clientA.stop();
+        void clientB.stop();
+      };
+    }
+
+    void boot();
+    return () => {
+      cancelled = true;
+      cleanupFn?.();
+    };
+  }, []);
+
+  const handleRunDemo = useCallback(async () => {
+    if (!runtimes || demoRunning) return;
+    setDemoRunning(true);
+    setInspectorOpen(true);
+    try {
+      await runConflictDemo(runtimes.a.client, runtimes.b.client, {
+        onCaption: setDemoCaption,
+        onOnlineA: setOnlineA,
+      });
+      const [hA, hB] = await Promise.all([
+        runtimes.a.client.map.stateHash(),
+        runtimes.b.client.map.stateHash(),
+      ]);
+      setHashA(hA);
+      setHashB(hB);
+    } finally {
+      setDemoRunning(false);
+    }
+  }, [runtimes, demoRunning]);
+
+  const handleCopyLink = useCallback(async () => {
+    if (!boardId) return;
+    const url = `${window.location.origin}/b/${boardId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      // Fallback ignored in headless browsers
+    }
+  }, [boardId]);
+
+  if (!runtimes) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-neutral-50 text-sm text-neutral-500">
+        Initializing SyncCanvas CRDT Playground…
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen flex-col overflow-hidden bg-neutral-100">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-base font-bold tracking-tight text-neutral-950">SyncCanvas</h1>
+          <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-[11px] text-neutral-600">
+            {boardId}
+          </span>
+          {mode === "local" && (
+            <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-700">
+              Local Simulation Mode (in-browser CRDT relay)
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="run-conflict-demo"
+            disabled={demoRunning}
+            onClick={() => void handleRunDemo()}
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-blue-700 disabled:opacity-50"
+          >
+            {demoRunning ? "Running Demo…" : "⚡ Run Conflict Demo"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFullScreen((v) => !v)}
+            className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            {fullScreen ? "Split Screen" : "Full-Screen A"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleCopyLink()}
+            className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            {copied ? "Copied!" : "Copy Share Link"}
+          </button>
+        </div>
+      </header>
+
+      {demoCaption !== null && (
+        <div
+          data-testid="demo-caption"
+          className="flex items-center justify-between border-b border-blue-200 bg-blue-50 px-4 py-1.5 text-xs font-medium text-blue-900"
+        >
+          <span>{demoCaption}</span>
+          {!demoRunning && (
+            <button
+              type="button"
+              onClick={() => setDemoCaption(null)}
+              className="text-blue-700 hover:underline"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
+
+      <main
+        className={`grid flex-1 gap-1 overflow-hidden p-1 ${
+          fullScreen ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2"
+        }`}
+      >
+        <SyncProvider boardId={boardId} paneId="a" client={runtimes.a.client} autoStart={false}>
+          <PlaygroundPane
+            label="User A"
+            accentClass="bg-blue-600"
+            paneId="a"
+            runtime={runtimes.a}
+            online={onlineA}
+            latencyMs={latencyA}
+            stateHash={hashA}
+            onToggleOnline={() => {
+              const next = !onlineA;
+              setOnlineA(next);
+              runtimes.a.client.transport.setOnline(next);
+            }}
+            onChangeLatency={(ms) => {
+              setLatencyA(ms);
+              runtimes.a.client.transport.setLatency(ms);
+            }}
+          />
+        </SyncProvider>
+
+        {!fullScreen && (
+          <SyncProvider boardId={boardId} paneId="b" client={runtimes.b.client} autoStart={false}>
+            <PlaygroundPane
+              label="User B"
+              accentClass="bg-pink-600"
+              paneId="b"
+              runtime={runtimes.b}
+              online={onlineB}
+              latencyMs={latencyB}
+              stateHash={hashB}
+              onToggleOnline={() => {
+                const next = !onlineB;
+                setOnlineB(next);
+                runtimes.b.client.transport.setOnline(next);
+              }}
+              onChangeLatency={(ms) => {
+                setLatencyB(ms);
+                runtimes.b.client.transport.setLatency(ms);
+              }}
+            />
+          </SyncProvider>
+        )}
+      </main>
+
+      <CrdtInspector
+        entries={entries}
+        open={inspectorOpen}
+        onToggle={() => setInspectorOpen((v) => !v)}
+        hashA={hashA}
+        hashB={hashB}
+        outboxA={0}
+        outboxB={0}
+      />
+    </div>
+  );
+}

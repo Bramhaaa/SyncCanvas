@@ -83,6 +83,10 @@ public class BoardStateService {
         cache.remove(boardId);
     }
 
+    public void evictAll() {
+        cache.clear();
+    }
+
     private BoardEntry getOrLoad(String boardId) {
         return cache.computeIfAbsent(boardId, this::loadFromDatabase);
     }
