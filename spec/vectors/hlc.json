@@ -1,0 +1,184 @@
+[
+  {
+    "name": "default initial state and first tick",
+    "comment": "Without an initial HLC, the clock starts at (0, 0, a). Since now (1000) > 0, tick adopts physicalTime=1000 and counter=0.",
+    "nodeId": "a",
+    "steps": [{ "op": "tick", "now": 1000, "expect": "0000000001000:00000:a" }]
+  },
+  {
+    "name": "tick advances physicalTime and resets counter",
+    "comment": "When now (1001) > last.physicalTime (1000), physicalTime advances to 1001 and counter resets from 5 to 0.",
+    "nodeId": "a",
+    "initial": "0000000001000:00005:a",
+    "steps": [{ "op": "tick", "now": 1001, "expect": "0000000001001:00000:a" }]
+  },
+  {
+    "name": "tick at same physicalTime increments counter monotonically",
+    "comment": "When now == last.physicalTime, physicalTime stays at 1000 and each local tick increments counter by 1.",
+    "nodeId": "a",
+    "initial": "0000000001000:00000:a",
+    "steps": [
+      { "op": "tick", "now": 1000, "expect": "0000000001000:00001:a" },
+      { "op": "tick", "now": 1000, "expect": "0000000001000:00002:a" }
+    ]
+  },
+  {
+    "name": "tick with wall clock moving backwards preserves physicalTime",
+    "comment": "When now (4000) < last.physicalTime (5000), the HLC must never regress: it keeps physicalTime=5000 and increments counter.",
+    "nodeId": "a",
+    "initial": "0000000005000:00003:a",
+    "steps": [
+      { "op": "tick", "now": 4000, "expect": "0000000005000:00004:a" },
+      { "op": "tick", "now": 3500, "expect": "0000000005000:00005:a" }
+    ]
+  },
+  {
+    "name": "tick counter overflow at 99999 carries into physicalTime",
+    "comment": "Incrementing counter past 99999 carries +1 into physicalTime (1000 -> 1001) and resets counter to 0.",
+    "nodeId": "a",
+    "initial": "0000000001000:99999:a",
+    "steps": [{ "op": "tick", "now": 1000, "expect": "0000000001001:00000:a" }]
+  },
+  {
+    "name": "recv branch 1: pt equals both last and remote (remote counter higher)",
+    "comment": "pt = max(1000, 1000, 1000) = 1000 matches both last and remote, so counter = max(3, 7) + 1 = 8.",
+    "nodeId": "a",
+    "initial": "0000000001000:00003:a",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 1000,
+        "remote": "0000000001000:00007:b",
+        "expect": "0000000001000:00008:a"
+      },
+      {
+        "op": "recv",
+        "now": 1000,
+        "remote": "0000000001000:00002:b",
+        "expect": "0000000001000:00009:a"
+      }
+    ]
+  },
+  {
+    "name": "recv branch 2: pt equals last only (local ahead of now and remote)",
+    "comment": "pt = max(1500, 2000, 1800) = 2000 matches only last.physicalTime, so counter = last.counter + 1 = 5 (ignoring remote's larger counter 10).",
+    "nodeId": "a",
+    "initial": "0000000002000:00004:a",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 1500,
+        "remote": "0000000001800:00010:b",
+        "expect": "0000000002000:00005:a"
+      }
+    ]
+  },
+  {
+    "name": "recv branch 3: pt equals remote only (remote ahead of now and last)",
+    "comment": "pt = max(1000, 1000, 2000) = 2000 matches only remote.physicalTime, so counter = remote.counter + 1 = 8.",
+    "nodeId": "a",
+    "initial": "0000000001000:00005:a",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 1000,
+        "remote": "0000000002000:00007:b",
+        "expect": "0000000002000:00008:a"
+      }
+    ]
+  },
+  {
+    "name": "recv branch 4: now strictly greater than last and remote resets counter",
+    "comment": "pt = max(5000, 2000, 3000) = 5000 comes strictly from wall clock now, so counter resets to 0.",
+    "nodeId": "a",
+    "initial": "0000000002000:00005:a",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 5000,
+        "remote": "0000000003000:00007:b",
+        "expect": "0000000005000:00000:a"
+      }
+    ]
+  },
+  {
+    "name": "recv counter overflow at 99999 carries into physicalTime",
+    "comment": "Remote is ahead at (2000, 99999); remote.counter + 1 = 100000 overflows into physicalTime=2001, counter=0.",
+    "nodeId": "a",
+    "initial": "0000000001000:00001:a",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 1000,
+        "remote": "0000000002000:99999:b",
+        "expect": "0000000002001:00000:a"
+      }
+    ]
+  },
+  {
+    "name": "recv rejects remote exceeding maxDriftMs without mutating clock",
+    "comment": "Remote physicalTime 61001 > now (1000) + default maxDriftMs (60000), so receive throws CLOCK_SKEW and leaves last at 1000:00002:a; the subsequent tick advances to 1000:00003:a.",
+    "nodeId": "a",
+    "initial": "0000000001000:00002:a",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 1000,
+        "remote": "0000000061001:00000:b",
+        "expectError": "CLOCK_SKEW"
+      },
+      {
+        "op": "tick",
+        "now": 1000,
+        "expect": "0000000001000:00003:a"
+      }
+    ]
+  },
+  {
+    "name": "recv at exact maxDriftMs boundary is accepted",
+    "comment": "The skew guard rejects strictly greater (> now + maxDriftMs). At 61000 == 1000 + 60000, receive succeeds.",
+    "nodeId": "a",
+    "initial": "0000000001000:00000:a",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 1000,
+        "remote": "0000000061000:00002:b",
+        "expect": "0000000061000:00003:a"
+      }
+    ]
+  },
+  {
+    "name": "recv keeps local nodeId when adopting remote timestamp",
+    "comment": "The local clock always stamps its own nodeId (node_alpha) after receiving from another node (node_zeta).",
+    "nodeId": "node_alpha",
+    "initial": "0000000001000:00000:node_alpha",
+    "steps": [
+      {
+        "op": "recv",
+        "now": 1000,
+        "remote": "0000000002000:00004:node_zeta",
+        "expect": "0000000002000:00005:node_alpha"
+      }
+    ]
+  },
+  {
+    "name": "realistic 13-digit epoch timestamps",
+    "comment": "Verifies 13-digit millisecond epoch formatting and multi-step tick + recv sequence.",
+    "nodeId": "user_a_9f2",
+    "initial": "1732579200450:00000:user_a_9f2",
+    "steps": [
+      {
+        "op": "tick",
+        "now": 1732579200450,
+        "expect": "1732579200450:00001:user_a_9f2"
+      },
+      {
+        "op": "recv",
+        "now": 1732579200500,
+        "remote": "1732579200999:00012:user_b_1c3",
+        "expect": "1732579200999:00013:user_a_9f2"
+      }
+    ]
+  }
+]

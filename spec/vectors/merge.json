@@ -1,0 +1,559 @@
+[
+  {
+    "name": "concurrent move and recolor on different fields both survive",
+    "comment": "LWW-Map is field-granular: ops touching x and fill on obj_1 occupy independent registers, so both values survive.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 120,
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "fill",
+        "value": "#3B82F6",
+        "hlc": "0000000001000:00000:user_b"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "x": { "value": 120, "hlc": "0000000001000:00000:user_a" },
+        "fill": { "value": "#3B82F6", "hlc": "0000000001000:00000:user_b" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "higher physicalTime wins on same field",
+    "comment": "physicalTime 2000 > 1000, so x=20 replaces x=10.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 10,
+        "hlc": "0000000001000:00009:user_b"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 20,
+        "hlc": "0000000002000:00000:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "x": { "value": 20, "hlc": "0000000002000:00000:user_a" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "higher counter wins when physicalTime ties",
+    "comment": "Both ops have physicalTime=1000; counter 00002 > 00001 wins even though nodeId user_a < user_b.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 10,
+        "hlc": "0000000001000:00001:user_b"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 20,
+        "hlc": "0000000001000:00002:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "x": { "value": 20, "hlc": "0000000001000:00002:user_a" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "nodeId tie-break when physicalTime and counter tie",
+    "comment": "When physicalTime and counter are equal, the lexicographically greater nodeId (user_b > user_a) wins deterministically.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "fill",
+        "value": "#EF4444",
+        "hlc": "0000000001000:00001:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "fill",
+        "value": "#3B82F6",
+        "hlc": "0000000001000:00001:user_b"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "fill": { "value": "#3B82F6", "hlc": "0000000001000:00001:user_b" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "idempotent: same op applied twice leaves state unchanged",
+    "comment": "Re-applying an op with an equal HLC is a no-op (DISCARDED_STALE), preserving idempotency.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 42,
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 42,
+        "hlc": "0000000001000:00000:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "x": { "value": 42, "hlc": "0000000001000:00000:user_a" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "stale op with lower HLC is discarded",
+    "comment": "When a newer op (pt=2000) arrives before an older op (pt=1000), the older op is discarded and the newer value stays.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "y",
+        "value": 250,
+        "hlc": "0000000002000:00000:user_b"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "y",
+        "value": 100,
+        "hlc": "0000000001000:00005:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "y": { "value": 250, "hlc": "0000000002000:00000:user_b" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "commutative: forward order",
+    "comment": "Forward application of 4 ops across 2 fields; must produce the exact same state and hash as the reversed-order vector.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 10,
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 30,
+        "hlc": "0000000001000:00000:user_b"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "y",
+        "value": 50,
+        "hlc": "0000000002000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "y",
+        "value": 40,
+        "hlc": "0000000001500:00000:user_b"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "x": { "value": 30, "hlc": "0000000001000:00000:user_b" },
+        "y": { "value": 50, "hlc": "0000000002000:00000:user_a" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "commutative: reversed order",
+    "comment": "Exact reverse of 'commutative: forward order'; must converge to the identical state and stateHash.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "y",
+        "value": 40,
+        "hlc": "0000000001500:00000:user_b"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "y",
+        "value": 50,
+        "hlc": "0000000002000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 30,
+        "hlc": "0000000001000:00000:user_b"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 10,
+        "hlc": "0000000001000:00000:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "x": { "value": 30, "hlc": "0000000001000:00000:user_b" },
+        "y": { "value": 50, "hlc": "0000000002000:00000:user_a" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "delete-wins over concurrent edit to another field",
+    "comment": "A later edit to x (pt=3000) updates the x register but does NOT resurrect the object because deleted=true (pt=2000) hides it.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "type",
+        "value": "rect",
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 10,
+        "hlc": "0000000001000:00001:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "zIndex",
+        "value": "a0",
+        "hlc": "0000000001000:00002:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "deleted",
+        "value": true,
+        "hlc": "0000000002000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "x",
+        "value": 99,
+        "hlc": "0000000003000:00000:user_b"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
+        "x": { "value": 99, "hlc": "0000000003000:00000:user_b" },
+        "zIndex": { "value": "a0", "hlc": "0000000001000:00002:user_a" },
+        "deleted": { "value": true, "hlc": "0000000002000:00000:user_a" }
+      }
+    },
+    "expectVisibleIds": [],
+    "expectHash": ""
+  },
+  {
+    "name": "undelete with greater HLC restores visibility",
+    "comment": "An explicit deleted=false at pt=3000 beats deleted=true at pt=2000, making obj_1 visible again.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "type",
+        "value": "rect",
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "zIndex",
+        "value": "a0",
+        "hlc": "0000000001000:00001:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "deleted",
+        "value": true,
+        "hlc": "0000000002000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "deleted",
+        "value": false,
+        "hlc": "0000000003000:00000:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
+        "zIndex": { "value": "a0", "hlc": "0000000001000:00001:user_a" },
+        "deleted": { "value": false, "hlc": "0000000003000:00000:user_a" }
+      }
+    },
+    "expectVisibleIds": ["obj_1"],
+    "expectHash": ""
+  },
+  {
+    "name": "object without type register is excluded from visibleObjectIds",
+    "comment": "Registers for an object with no type register are still stored and hashed, but the object is not visible.",
+    "ops": [
+      {
+        "objectId": "obj_orphan",
+        "field": "x",
+        "value": 50,
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_orphan",
+        "field": "zIndex",
+        "value": "a0",
+        "hlc": "0000000001000:00001:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_orphan": {
+        "x": { "value": 50, "hlc": "0000000001000:00000:user_a" },
+        "zIndex": { "value": "a0", "hlc": "0000000001000:00001:user_a" }
+      }
+    },
+    "expectVisibleIds": [],
+    "expectHash": ""
+  },
+  {
+    "name": "zIndex tie breaks deterministically by objectId",
+    "comment": "obj_b and obj_a share zIndex='a0' so obj_a sorts before obj_b; obj_c has zIndex='a1' so it sorts last.",
+    "ops": [
+      {
+        "objectId": "obj_c",
+        "field": "type",
+        "value": "rect",
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_c",
+        "field": "zIndex",
+        "value": "a1",
+        "hlc": "0000000001000:00001:user_a"
+      },
+      {
+        "objectId": "obj_b",
+        "field": "type",
+        "value": "ellipse",
+        "hlc": "0000000001000:00002:user_a"
+      },
+      {
+        "objectId": "obj_b",
+        "field": "zIndex",
+        "value": "a0",
+        "hlc": "0000000001000:00003:user_a"
+      },
+      {
+        "objectId": "obj_a",
+        "field": "type",
+        "value": "rect",
+        "hlc": "0000000001000:00004:user_b"
+      },
+      {
+        "objectId": "obj_a",
+        "field": "zIndex",
+        "value": "a0",
+        "hlc": "0000000001000:00005:user_b"
+      }
+    ],
+    "expectState": {
+      "obj_a": {
+        "type": { "value": "rect", "hlc": "0000000001000:00004:user_b" },
+        "zIndex": { "value": "a0", "hlc": "0000000001000:00005:user_b" }
+      },
+      "obj_b": {
+        "type": { "value": "ellipse", "hlc": "0000000001000:00002:user_a" },
+        "zIndex": { "value": "a0", "hlc": "0000000001000:00003:user_a" }
+      },
+      "obj_c": {
+        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
+        "zIndex": { "value": "a1", "hlc": "0000000001000:00001:user_a" }
+      }
+    },
+    "expectVisibleIds": ["obj_a", "obj_b", "obj_c"],
+    "expectHash": ""
+  },
+  {
+    "name": "float and integer numeric values for JCS hash parity",
+    "comment": "Mixes integer (420), whole-number float (420.0), and fractional floats (0.5, 1.25) to verify RFC 8785 JCS produces identical hashes in JS and Java.",
+    "ops": [
+      {
+        "objectId": "obj_num",
+        "field": "x",
+        "value": 420,
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_num",
+        "field": "y",
+        "value": 420.0,
+        "hlc": "0000000001000:00001:user_a"
+      },
+      {
+        "objectId": "obj_num",
+        "field": "opacity",
+        "value": 0.5,
+        "hlc": "0000000001000:00002:user_a"
+      },
+      {
+        "objectId": "obj_num",
+        "field": "strokeWidth",
+        "value": 1.25,
+        "hlc": "0000000001000:00003:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_num": {
+        "x": { "value": 420, "hlc": "0000000001000:00000:user_a" },
+        "y": { "value": 420, "hlc": "0000000001000:00001:user_a" },
+        "opacity": { "value": 0.5, "hlc": "0000000001000:00002:user_a" },
+        "strokeWidth": { "value": 1.25, "hlc": "0000000001000:00003:user_a" }
+      }
+    },
+    "expectHash": ""
+  },
+  {
+    "name": "freehand points array value",
+    "comment": "Verifies nested Point[] arrays are stored, compared, and hashed identically across TS and Java.",
+    "ops": [
+      {
+        "objectId": "obj_stroke",
+        "field": "type",
+        "value": "freehand",
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_stroke",
+        "field": "x",
+        "value": 10,
+        "hlc": "0000000001000:00001:user_a"
+      },
+      {
+        "objectId": "obj_stroke",
+        "field": "y",
+        "value": 20,
+        "hlc": "0000000001000:00002:user_a"
+      },
+      {
+        "objectId": "obj_stroke",
+        "field": "zIndex",
+        "value": "a0",
+        "hlc": "0000000001000:00003:user_a"
+      },
+      {
+        "objectId": "obj_stroke",
+        "field": "points",
+        "value": [
+          [0, 0],
+          [1.5, -2.25],
+          [10, 20]
+        ],
+        "hlc": "0000000001000:00004:user_a"
+      }
+    ],
+    "expectState": {
+      "obj_stroke": {
+        "type": { "value": "freehand", "hlc": "0000000001000:00000:user_a" },
+        "x": { "value": 10, "hlc": "0000000001000:00001:user_a" },
+        "y": { "value": 20, "hlc": "0000000001000:00002:user_a" },
+        "zIndex": { "value": "a0", "hlc": "0000000001000:00003:user_a" },
+        "points": {
+          "value": [
+            [0, 0],
+            [1.5, -2.25],
+            [10, 20]
+          ],
+          "hlc": "0000000001000:00004:user_a"
+        }
+      }
+    },
+    "expectVisibleIds": ["obj_stroke"],
+    "expectHash": ""
+  },
+  {
+    "name": "multi-object board with mixed types and a tombstone",
+    "comment": "Combines visible rect (zIndex='a1'), deleted text (zIndex='a0'), and visible arrow (zIndex='a0V'); only arrow then rect are visible, while all 3 objects remain in state and hash.",
+    "ops": [
+      {
+        "objectId": "obj_1",
+        "field": "type",
+        "value": "rect",
+        "hlc": "0000000001000:00000:user_a"
+      },
+      {
+        "objectId": "obj_1",
+        "field": "zIndex",
+        "value": "a1",
+        "hlc": "0000000001000:00001:user_a"
+      },
+      {
+        "objectId": "obj_2",
+        "field": "type",
+        "value": "text",
+        "hlc": "0000000001000:00002:user_a"
+      },
+      {
+        "objectId": "obj_2",
+        "field": "text",
+        "value": "Hello",
+        "hlc": "0000000001000:00003:user_a"
+      },
+      {
+        "objectId": "obj_2",
+        "field": "zIndex",
+        "value": "a0",
+        "hlc": "0000000001000:00004:user_a"
+      },
+      {
+        "objectId": "obj_2",
+        "field": "deleted",
+        "value": true,
+        "hlc": "0000000002000:00000:user_b"
+      },
+      {
+        "objectId": "obj_3",
+        "field": "type",
+        "value": "arrow",
+        "hlc": "0000000001500:00000:user_b"
+      },
+      {
+        "objectId": "obj_3",
+        "field": "zIndex",
+        "value": "a0V",
+        "hlc": "0000000001500:00001:user_b"
+      }
+    ],
+    "expectState": {
+      "obj_1": {
+        "type": { "value": "rect", "hlc": "0000000001000:00000:user_a" },
+        "zIndex": { "value": "a1", "hlc": "0000000001000:00001:user_a" }
+      },
+      "obj_2": {
+        "type": { "value": "text", "hlc": "0000000001000:00002:user_a" },
+        "text": { "value": "Hello", "hlc": "0000000001000:00003:user_a" },
+        "zIndex": { "value": "a0", "hlc": "0000000001000:00004:user_a" },
+        "deleted": { "value": true, "hlc": "0000000002000:00000:user_b" }
+      },
+      "obj_3": {
+        "type": { "value": "arrow", "hlc": "0000000001500:00000:user_b" },
+        "zIndex": { "value": "a0V", "hlc": "0000000001500:00001:user_b" }
+      }
+    },
+    "expectVisibleIds": ["obj_3", "obj_1"],
+    "expectHash": ""
+  }
+]
