@@ -5,3 +5,19 @@ export { canonicalizeRegisters, computeStateHash } from "./hash.js";
 export { ClockSkewError, compareHlc, createHlcClock, formatHlc, parseHlc } from "./hlc.js";
 export { createLwwMap } from "./lww-map.js";
 export { bringToFront, keyAbove, keyBetween, sendToBack } from "./zindex.js";
+export { createEmitter, type Emitter } from "./emitter.js";
+export {
+  createMemoryStorage,
+  createIndexedDbStorage,
+  type MemoryStorageOptions,
+  type IndexedDbStorageOptions,
+} from "./storage/index.js";
+export {
+  createWebSocketTransport,
+  createFakeServer,
+  type FakeServer,
+  type WebSocketConstructor,
+  type WebSocketLike,
+  type WebSocketTransportOptions,
+} from "./transport/index.js";
+export { createSyncClient } from "./sync-client.js";

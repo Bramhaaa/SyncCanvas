@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from "./protocol.js";
+import type { ClientMessage, ServerMessage, SnapshotResponse } from "./protocol.js";
 
 export type HlcString = string; // "{13-digit ms}:{5-digit counter}:{nodeId}"
 
@@ -113,4 +113,8 @@ export interface SyncClientOptions {
   transport: Transport;
   clock: HlcClock;
   flushIntervalMs?: number;
+  /** Optional snapshot fetcher override (defaults to HTTP GET /api/v1/boards/{boardId}/snapshot). */
+  fetchSnapshot?: () => Promise<SnapshotResponse>;
+  /** Optional base URL for the default HTTP snapshot fetcher (e.g. "http://localhost:8080"). */
+  apiBaseUrl?: string;
 }
