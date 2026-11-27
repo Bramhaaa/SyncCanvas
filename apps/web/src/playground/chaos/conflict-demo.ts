@@ -68,11 +68,26 @@ export async function runConflictDemo(
 ): Promise<void> {
   const pause = cb.stepDelayMs ?? 900;
 
-  // Ensure demo rect exists
+  // Ensure both clients start online and reset demo rect to its blue starting position
+  // so repeated clicks of "Run Conflict Demo" always visibly animate the conflict.
+  clientA.transport.setOnline(true);
+  clientB.transport.setOnline(true);
+  cb.onOnlineA(true);
+
   if (!clientA.map.getObject(DEMO_RECT_ID)) {
     seedStarterBoard(clientA);
-    await delay(200);
+  } else {
+    clientA.mutate([
+      { objectId: DEMO_RECT_ID, field: "deleted", value: false },
+      { objectId: DEMO_RECT_ID, field: "x", value: 80 },
+      { objectId: DEMO_RECT_ID, field: "y", value: 110 },
+      { objectId: DEMO_RECT_ID, field: "w", value: 150 },
+      { objectId: DEMO_RECT_ID, field: "h", value: 95 },
+      { objectId: DEMO_RECT_ID, field: "fill", value: "#dbeafe" },
+      { objectId: DEMO_RECT_ID, field: "stroke", value: "#2563eb" },
+    ]);
   }
+  await delay(Math.min(350, pause));
 
   cb.onCaption("1/6 — Cutting User A's network connection (offline mode)…");
   clientA.transport.setOnline(false);

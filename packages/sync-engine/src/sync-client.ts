@@ -524,6 +524,10 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
 
     map,
 
+    get status(): ConnStatus {
+      return connStatus;
+    },
+
     subscribeObject(objectId: string, cb: () => void): () => void {
       let subs = objectSubscribers.get(objectId);
       if (subs === undefined) {

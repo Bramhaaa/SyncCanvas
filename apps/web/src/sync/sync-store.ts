@@ -34,7 +34,7 @@ export function createSyncStore(
   const objectCache = new Map<string, Record<string, FieldValue> | undefined>();
   let visibleIdsCache: string[] = client.map.visibleObjectIds();
   let eventsCache: SyncEvent[] = [];
-  let statusCache: ConnStatus = "offline";
+  let statusCache: ConnStatus = client.status;
   let outboxDepthCache = 0;
 
   const eventListeners = new Set<() => void>();

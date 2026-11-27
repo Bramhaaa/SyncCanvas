@@ -100,6 +100,7 @@ export interface SyncClient {
   stop(): Promise<void>;
   mutate(changes: Array<Omit<Op, "hlc">>): Op[];
   readonly map: LwwMap;
+  readonly status: ConnStatus;
   subscribeObject(objectId: string, cb: () => void): () => void;
   subscribeIds(cb: () => void): () => void;
   on(cb: (e: SyncEvent) => void): () => void;

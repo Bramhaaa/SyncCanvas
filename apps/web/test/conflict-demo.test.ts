@@ -44,7 +44,7 @@ describe("Conflict Demo (T41)", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(captions).toHaveLength(6);
-    expect(onlineChanges).toEqual([false, true]);
+    expect(onlineChanges).toEqual([true, false, true]);
     expect(await clientA.map.stateHash()).toBe(await clientB.map.stateHash());
     expect(clientA.map.getObject(DEMO_RECT_ID)).toMatchObject({
       x: 320,

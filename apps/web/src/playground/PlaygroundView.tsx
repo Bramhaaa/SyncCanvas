@@ -108,6 +108,8 @@ export function PlaygroundView() {
   const [latencyB, setLatencyB] = useState(0);
   const [hashA, setHashA] = useState("");
   const [hashB, setHashB] = useState("");
+  const [outboxA, setOutboxA] = useState(0);
+  const [outboxB, setOutboxB] = useState(0);
   const [entries, setEntries] = useState<InspectorEntry[]>([]);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [demoRunning, setDemoRunning] = useState(false);
@@ -226,7 +228,12 @@ export function PlaygroundView() {
         pane: "A" | "B",
         event: Parameters<Parameters<SyncClient["on"]>[0]>[0],
       ) => {
-        if (event.kind === "outbox" || event.kind === "status") return;
+        if (event.kind === "outbox") {
+          if (pane === "A") setOutboxA(event.depth);
+          else setOutboxB(event.depth);
+          return;
+        }
+        if (event.kind === "status") return;
         const now = new Date();
         const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
         entryIdRef.current += 1;
@@ -444,8 +451,8 @@ export function PlaygroundView() {
         onToggle={() => setInspectorOpen((v) => !v)}
         hashA={hashA}
         hashB={hashB}
-        outboxA={0}
-        outboxB={0}
+        outboxA={outboxA}
+        outboxB={outboxB}
       />
     </div>
   );

@@ -12,6 +12,7 @@ export interface ViewportProps {
   onPointerDown?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp?: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerCancel?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onDoubleClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** SVG world-space children rendered inside `<g transform="matrix(...)">`. */
   children: ReactNode;
@@ -32,6 +33,7 @@ export function Viewport({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onPointerCancel,
   onDoubleClick,
   children,
   overlay,
@@ -54,6 +56,7 @@ export function Viewport({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onDoubleClick={onDoubleClick}
     >
       <svg className="block h-full w-full" xmlns="http://www.w3.org/2000/svg">

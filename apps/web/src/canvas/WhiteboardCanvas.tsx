@@ -460,6 +460,7 @@ export function WhiteboardCanvas({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         overlay={
           <>
             {presencePeers.length > 0 && <RemoteCursorsOverlay peers={presencePeers} />}
