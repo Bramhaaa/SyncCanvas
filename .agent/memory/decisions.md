@@ -27,3 +27,13 @@ Append new decisions chronologically. Never rewrite history.
   3. **Server field validation & atomic frames:** `type` is write-once; type is resolved from earlier ops in the same frame then board state; frames are accepted/rejected atomically with `ERROR.rejectedHlcs`; catch-up pages are capped at 500 ops or 256 KiB; `/ops` returns `410 Gone` for pruned seqs.
   4. **Workflow:** Commit directly to `main` (no per-task feature branches); `.agent/` and `AGENTS.md` are kept local-only and excluded via `.gitignore`.
 - **Consequences:** `spec/protocol.md`, `spec/schema/*.json`, `PRD.md` (errata), and `IMPLEMENTATION_PLAN.md` (T22) are aligned; Week 1 (`T00`–`T08`) passes all TS and Java parity checks.
+
+## 2026-11-28 — Git Tracking of `.agent/`, Multi-Node Cache Sync, CRDT Undo, and Student Deployment
+- **Context:** Owner opted to track `.agent/` and `AGENTS.md` in git for portability, requested a complete-product audit pass after Weeks 3–6, and asked for zero-cost student deployment options.
+- **Decisions Made:**
+  1. **Track `.agent/` and `AGENTS.md` in git:** Removed both from `.gitignore` so session memory and skills persist across machines.
+  2. **Multi-node `BoardStateService` cache consistency:** `SessionRegistry.onOps` feeds remote Redis broadcasts into `BoardStateService.applyRemoteBroadcast` (falling back to PostgreSQL `readSince` catch-up on any gap or `/snapshot` call), backed by a bounded LRU cache (`MAX_CACHED_BOARDS = 256`).
+  3. **Ownership-checked CRDT Undo/Redo (`T60`):** `createUndoManager` checks `map.get(objectId, field)?.hlc === writtenHlc` before reverting so local `Ctrl+Z` never clobbers a peer's newer edit.
+  4. **Focus-scoped canvas shortcuts & `happy-dom` tests:** Canvas keyboard shortcuts bind to focusable per-pane containers (preventing split-screen collisions); `apps/web` Vitest uses `happy-dom` instead of `jsdom` (avoiding `jsdom@29`/`undici@8` Node 22 breakage).
+  5. **Free student hosting paths (`docs/DEPLOY.md`):** Primary recommendation is GitHub Student Developer Pack (Azure for Students \$100 no-card or DigitalOcean \$200 VM running `2× Spring Boot + Redis + Caddy` + Neon Free + Vercel Hobby + free `.me`/`.tech` domain), with a zero-card Render Free Blueprint (`deploy/render.yaml`, `SYNCCANVAS_BUS=local`, 512 MB JVM flags) and Oracle Always Free as alternatives.
+- **Consequences:** All P0–P2 audit flaws are resolved and verified against real Docker Postgres 16 + Redis 7; project is ready for local owner review and student deployment.

@@ -15,4 +15,4 @@ SyncCanvas is an offline-first, real-time collaborative digital whiteboard power
 - **Deployment & Testing:** Vercel (frontend), always-on VM with Docker Compose (Caddy + 2× Spring Boot + Redis), Neon (PostgreSQL), Playwright, k6.
 
 ## Current Maturity
-- Pre-code planning phase. `PRD.md` (v1.1), `IMPLEMENTATION_PLAN.md` (45 tasks across Weeks 1–8), and `AGENTS.md` are finalized. Monorepo scaffold (`T00`) has not been run yet.
+- **All P0 Weeks 1–6 (`T00`–`T54`) + full-repo audit remediation & P1 polish (ownership-checked undo/redo, SVG/PNG export, sticky/diamond tools) complete.** Verified across 105 TS tests, Next.js 15 production build, and full Java/Gradle + Docker Testcontainers ITs (PostgreSQL 16 + Redis 7). Ready for owner local review and free student deployment (`docs/DEPLOY.md`).
