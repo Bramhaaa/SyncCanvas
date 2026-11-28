@@ -2,6 +2,8 @@ package com.synccanvas.ws;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.synccanvas.config.SyncCanvasMetrics;
+import com.synccanvas.persistence.BoardStateService;
 import com.synccanvas.protocol.PresenceMessage;
 import com.synccanvas.protocol.SyncBroadcastMessage;
 import com.synccanvas.protocol.WsMessage;
@@ -12,6 +14,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -28,13 +31,21 @@ public class SessionRegistry implements BoardListener {
             String sessionId, String boardId, String clientId, WebSocketSession session) {}
 
     private final BoardBus boardBus;
+    private final BoardStateService boardStateService;
+    private final SyncCanvasMetrics metrics;
     private final ObjectMapper objectMapper;
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, RegisteredSession>> boardSessions =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RegisteredSession> bySessionId = new ConcurrentHashMap<>();
 
-    public SessionRegistry(BoardBus boardBus, ObjectMapper objectMapper) {
+    public SessionRegistry(
+            BoardBus boardBus,
+            BoardStateService boardStateService,
+            ObjectProvider<SyncCanvasMetrics> metricsProvider,
+            ObjectMapper objectMapper) {
         this.boardBus = boardBus;
+        this.boardStateService = boardStateService;
+        this.metrics = metricsProvider != null ? metricsProvider.getIfAvailable() : null;
         this.objectMapper = objectMapper;
     }
 
@@ -53,6 +64,9 @@ public class SessionRegistry implements BoardListener {
             return sessions;
         });
 
+        if (metrics != null) {
+            metrics.sessionOpened();
+        }
         return reg;
     }
 
@@ -69,6 +83,9 @@ public class SessionRegistry implements BoardListener {
             }
             return sessions;
         });
+        if (metrics != null) {
+            metrics.sessionClosed();
+        }
         return removed;
     }
 
@@ -92,6 +109,10 @@ public class SessionRegistry implements BoardListener {
 
     @Override
     public void onOps(String boardId, SyncBroadcastMessage message) {
+        // Keep this node's in-memory LwwMap cache fresh for remote Redis broadcasts.
+        boardStateService.applyRemoteBroadcast(
+                boardId, message.serverSeqStart(), message.serverSeqEnd(), message.ops());
+
         Map<String, RegisteredSession> sessions = boardSessions.get(boardId);
         if (sessions == null || sessions.isEmpty()) {
             return;

@@ -64,5 +64,10 @@ class BoardStateServiceTest {
 
         assertThat(hydrated.stateHash()).isEqualTo(expected.stateHash());
         assertThat(service.getSnapshot("brd_12345678").snapshotSeq()).isEqualTo(2L);
+
+        // Remote broadcast from another node updates cached LwwMap without DB re-hydration
+        Op remoteOp = new Op("obj_2", "type", TextNode.valueOf("ellipse"), new Hlc(2000L, 0, "user_b").format());
+        service.applyRemoteBroadcast("brd_12345678", 3L, 3L, List.of(remoteOp));
+        assertThat(service.getState("brd_12345678").get("obj_2", "type")).isPresent();
     }
 }

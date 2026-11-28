@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_VIEWPORT, panBy, zoomAtPoint, type ViewportState } from "./viewport-math";
+import { useCallback, useRef, useState } from "react";
+import {
+  clampZoom,
+  DEFAULT_VIEWPORT,
+  panBy,
+  zoomAtPoint,
+  type ViewportState,
+} from "./viewport-math";
 
 export interface UseViewportResult {
   viewport: ViewportState;
@@ -9,8 +15,15 @@ export interface UseViewportResult {
   isPanning: boolean;
   isSpacePressed: boolean;
   resetViewport: () => void;
+  fitToBounds: (
+    bounds: { x: number; y: number; w: number; h: number },
+    containerW: number,
+    containerH: number,
+  ) => void;
   zoomBy: (factor: number, centerX?: number, centerY?: number) => void;
   handleWheel: (e: React.WheelEvent<HTMLElement>) => void;
+  handleSpaceKeyDown: (e: React.KeyboardEvent<HTMLElement>) => boolean;
+  handleSpaceKeyUp: (e: React.KeyboardEvent<HTMLElement>) => void;
   startPanIfApplicable: (e: React.PointerEvent<HTMLElement>) => boolean;
   movePan: (e: React.PointerEvent<HTMLElement>) => boolean;
   endPan: () => boolean;
@@ -23,46 +36,49 @@ export function useViewport(initial: ViewportState = DEFAULT_VIEWPORT): UseViewp
 
   const panStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        (e.target as HTMLElement | null)?.isContentEditable
-      ) {
-        return;
-      }
-      e.preventDefault();
-      setIsSpacePressed(true);
-    };
+  const handleSpaceKeyDown = useCallback((e: React.KeyboardEvent<HTMLElement>): boolean => {
+    if (e.code !== "Space") return false;
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    if (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      (e.target as HTMLElement | null)?.isContentEditable
+    ) {
+      return false;
+    }
+    e.preventDefault();
+    setIsSpacePressed(true);
+    return true;
+  }, []);
 
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        setIsSpacePressed(false);
-      }
-    };
-
-    const onBlur = () => {
+  const handleSpaceKeyUp = useCallback((e: React.KeyboardEvent<HTMLElement>): void => {
+    if (e.code === "Space") {
       setIsSpacePressed(false);
-      panStartRef.current = null;
-      setIsPanning(false);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", onBlur);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("blur", onBlur);
-    };
+    }
   }, []);
 
   const resetViewport = useCallback(() => {
     setViewport(DEFAULT_VIEWPORT);
   }, []);
+
+  const fitToBounds = useCallback(
+    (
+      bounds: { x: number; y: number; w: number; h: number },
+      containerW: number,
+      containerH: number,
+    ) => {
+      const padding = 64;
+      const availW = Math.max(120, containerW - padding * 2);
+      const availH = Math.max(120, containerH - padding * 2);
+      const zoom = clampZoom(
+        Math.min(availW / Math.max(1, bounds.w), availH / Math.max(1, bounds.h), 1.5),
+      );
+      const x = containerW / 2 - (bounds.x + bounds.w / 2) * zoom;
+      const y = containerH / 2 - (bounds.y + bounds.h / 2) * zoom;
+      setViewport({ x, y, zoom });
+    },
+    [],
+  );
 
   const zoomBy = useCallback((factor: number, centerX = 0, centerY = 0) => {
     setViewport((vp) => zoomAtPoint(vp, vp.zoom * factor, centerX, centerY));
@@ -73,7 +89,6 @@ export function useViewport(initial: ViewportState = DEFAULT_VIEWPORT): UseViewp
     const rect = e.currentTarget.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
-    // Smooth exponential zoom factor from wheel/pinch deltaY
     const zoomFactor = Math.exp(-e.deltaY * 0.0015);
     setViewport((vp) => zoomAtPoint(vp, vp.zoom * zoomFactor, screenX, screenY));
   }, []);
@@ -112,8 +127,11 @@ export function useViewport(initial: ViewportState = DEFAULT_VIEWPORT): UseViewp
     isPanning,
     isSpacePressed,
     resetViewport,
+    fitToBounds,
     zoomBy,
     handleWheel,
+    handleSpaceKeyDown,
+    handleSpaceKeyUp,
     startPanIfApplicable,
     movePan,
     endPan,

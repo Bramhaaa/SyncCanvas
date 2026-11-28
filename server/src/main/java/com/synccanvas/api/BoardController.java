@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,13 +32,24 @@ public class BoardController {
 
     private static final String BASE36 = "0123456789abcdefghijklmnopqrstuvwxyz";
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int MAX_TRACKED_IPS = 10_000;
+    private static final long IP_IDLE_EVICT_MS = 5 * 60_000L;
+
+    private static final class IpBucket {
+        final TokenBucketRateLimiter limiter;
+        volatile long lastSeenAt;
+
+        IpBucket(TokenBucketRateLimiter limiter, long now) {
+            this.limiter = limiter;
+            this.lastSeenAt = now;
+        }
+    }
 
     private final BoardRepository boardRepository;
     private final BoardStateService boardStateService;
     private final OpLogRepository opLogRepository;
     private final LimitsProperties limits;
-    private final ConcurrentHashMap<String, TokenBucketRateLimiter> ipLimiters =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, IpBucket> ipLimiters = new ConcurrentHashMap<>();
 
     public record CreateBoardRequest(String title, Boolean isDemo) {}
 
@@ -57,15 +69,21 @@ public class BoardController {
             @RequestBody(required = false) CreateBoardRequest request,
             HttpServletRequest httpRequest) {
         String ip = resolveClientIp(httpRequest);
-        TokenBucketRateLimiter limiter = ipLimiters.computeIfAbsent(
-                ip,
-                ignored -> new TokenBucketRateLimiter(
-                        limits.boardCreatesPerMinutePerIp(),
-                        limits.boardCreatesPerMinutePerIp(),
-                        60_000L,
-                        System::currentTimeMillis));
+        long now = System.currentTimeMillis();
+        evictStaleIpBucketsIfNeeded(now);
 
-        if (!limiter.tryAcquire()) {
+        IpBucket bucket = ipLimiters.computeIfAbsent(
+                ip,
+                ignored -> new IpBucket(
+                        new TokenBucketRateLimiter(
+                                limits.boardCreatesPerMinutePerIp(),
+                                limits.boardCreatesPerMinutePerIp(),
+                                60_000L,
+                                System::currentTimeMillis),
+                        now));
+        bucket.lastSeenAt = now;
+
+        if (!bucket.limiter.tryAcquire()) {
             throw new ResponseStatusException(
                     HttpStatus.TOO_MANY_REQUESTS, "Board creation rate limit exceeded");
         }
@@ -109,13 +127,24 @@ public class BoardController {
                     HttpStatus.GONE,
                     "Requested sinceSeq " + sinceSeq + " was pruned (oldestAvailableSeq=" + oldest + ")");
             detail.setProperty("oldestAvailableSeq", oldest);
-            throw new ResponseStatusException(HttpStatus.GONE, detail.getDetail());
+            throw new ErrorResponseException(HttpStatus.GONE, detail, null);
         }
 
         List<SequencedOp> rows = opLogRepository.readSince(boardId, sinceSeq, limit + 1);
         boolean hasMore = rows.size() > limit;
         List<SequencedOp> page = hasMore ? rows.subList(0, limit) : rows;
         return new OpsPageResponse(page, hasMore);
+    }
+
+    private void evictStaleIpBucketsIfNeeded(long now) {
+        if (ipLimiters.size() < 1_024) {
+            return;
+        }
+        long cutoff = now - IP_IDLE_EVICT_MS;
+        ipLimiters.entrySet().removeIf(e -> e.getValue().lastSeenAt < cutoff);
+        if (ipLimiters.size() >= MAX_TRACKED_IPS) {
+            ipLimiters.clear();
+        }
     }
 
     private static String generateBoardId() {
@@ -127,11 +156,11 @@ public class BoardController {
         return sb.toString();
     }
 
+    /**
+     * Relies on Spring Boot's {@code server.forward-headers-strategy=framework} so proxy headers
+     * are only honored from trusted reverse proxies (Caddy / Render / Koyeb).
+     */
     private static String resolveClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
         return request.getRemoteAddr() != null ? request.getRemoteAddr() : "unknown";
     }
 }

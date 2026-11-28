@@ -97,7 +97,8 @@ class BoardControllerTest {
 
         mockMvc.perform(get("/api/v1/boards/brd_pruned01/ops?sinceSeq=100"))
                 .andExpect(status().isGone())
-                .andExpect(jsonPath("$.status").value(410));
+                .andExpect(jsonPath("$.status").value(410))
+                .andExpect(jsonPath("$.oldestAvailableSeq").value(500));
     }
 
     @Test

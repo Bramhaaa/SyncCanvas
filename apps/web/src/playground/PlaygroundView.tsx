@@ -17,7 +17,7 @@ import { WhiteboardCanvas } from "@/canvas/WhiteboardCanvas";
 import { CrdtInspector, type InspectorEntry } from "@/inspector/CrdtInspector";
 import { SyncProvider, useConnStatus, useOutboxDepth } from "@/sync";
 import { PaneHeader } from "./chaos/ChaosControls";
-import { runConflictDemo, seedStarterBoard } from "./chaos/conflict-demo";
+import { DEMO_RECT_ID, runConflictDemo, seedStarterBoard } from "./chaos/conflict-demo";
 
 interface PaneRuntime {
   client: SyncClient;
@@ -32,6 +32,7 @@ function PlaygroundPane({
   online,
   latencyMs,
   stateHash,
+  highlightedId,
   onToggleOnline,
   onChangeLatency,
 }: {
@@ -42,6 +43,7 @@ function PlaygroundPane({
   online: boolean;
   latencyMs: number;
   stateHash: string;
+  highlightedId: string | null;
   onToggleOnline: () => void;
   onChangeLatency: (ms: number) => void;
 }) {
@@ -90,6 +92,7 @@ function PlaygroundPane({
       <div className="relative flex-1">
         <WhiteboardCanvas
           presencePeers={peers}
+          highlightedId={highlightedId}
           onCursorMove={handleCursorMove}
           onSelectionChange={handleSelectionChange}
         />
@@ -101,6 +104,8 @@ function PlaygroundPane({
 export function PlaygroundView() {
   const [boardId, setBoardId] = useState<string>("");
   const [mode, setMode] = useState<"loading" | "backend" | "local">("loading");
+  const [backendAwake, setBackendAwake] = useState(false);
+  const [bootNonce, setBootNonce] = useState(0);
   const [runtimes, setRuntimes] = useState<{ a: PaneRuntime; b: PaneRuntime } | null>(null);
   const [onlineA, setOnlineA] = useState(true);
   const [onlineB, setOnlineB] = useState(true);
@@ -116,12 +121,35 @@ export function PlaygroundView() {
   const [demoCaption, setDemoCaption] = useState<string | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ code: string; message: string } | null>(null);
 
   const entryIdRef = useRef(0);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashObject = useCallback((objectId: string) => {
+    setHighlightedId(objectId);
+    if (highlightTimerRef.current !== null) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedId(null);
+      highlightTimerRef.current = null;
+    }, 2_200);
+  }, []);
+
+  const showToast = useCallback((code: string, message: string) => {
+    setToast({ code, message });
+    if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 4_500);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     let cleanupFn: (() => void) | null = null;
+    let wakePollTimer: ReturnType<typeof setInterval> | null = null;
 
     async function boot() {
       const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080").replace(
@@ -138,7 +166,7 @@ export function PlaygroundView() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ title: "Recruiter Playground", isDemo: true }),
-          signal: AbortSignal.timeout(2_500),
+          signal: AbortSignal.timeout(4_000),
         });
         if (res.ok) {
           const data = (await res.json()) as { boardId: string };
@@ -146,7 +174,7 @@ export function PlaygroundView() {
           useBackend = true;
         }
       } catch {
-        // Backend unreachable -> fall back to local FakeServer simulation
+        // Backend unreachable or waking from cold start -> start immediately in local mode
       }
 
       if (cancelled) return;
@@ -209,6 +237,26 @@ export function PlaygroundView() {
           clock: createHlcClock({ nodeId: nodeB, now: () => Date.now() }),
           fetchSnapshot: async () => fakeServer.getSnapshot(),
         });
+
+        // Quietly poll backend health in case a free-tier PaaS container wakes up from cold start.
+        if (process.env.NEXT_PUBLIC_API_URL) {
+          wakePollTimer = setInterval(async () => {
+            try {
+              const r = await fetch(`${apiUrl}/actuator/health`, {
+                signal: AbortSignal.timeout(2_500),
+              });
+              if (r.ok && !cancelled) {
+                setBackendAwake(true);
+                if (wakePollTimer !== null) {
+                  clearInterval(wakePollTimer);
+                  wakePollTimer = null;
+                }
+              }
+            } catch {
+              // Still waking
+            }
+          }, 5_000);
+        }
       }
 
       const presenceA = createPresenceClient({
@@ -234,6 +282,13 @@ export function PlaygroundView() {
           return;
         }
         if (event.kind === "status") return;
+
+        if (event.kind === "error") {
+          showToast(event.code, event.message);
+        } else if (event.kind === "snapshot_required") {
+          showToast("SNAPSHOT_REQUIRED", "Op log compacted — merging latest snapshot…");
+        }
+
         const now = new Date();
         const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
         entryIdRef.current += 1;
@@ -269,6 +324,9 @@ export function PlaygroundView() {
 
       setBoardId(resolvedBoardId);
       setMode(useBackend ? "backend" : "local");
+      setBackendAwake(false);
+      setOnlineA(true);
+      setOnlineB(true);
       setHashA(hA);
       setHashB(hB);
       setRuntimes({
@@ -289,9 +347,10 @@ export function PlaygroundView() {
     void boot();
     return () => {
       cancelled = true;
+      if (wakePollTimer !== null) clearInterval(wakePollTimer);
       cleanupFn?.();
     };
-  }, []);
+  }, [bootNonce, showToast]);
 
   const handleRunDemo = useCallback(async () => {
     if (!runtimes || demoRunning) return;
@@ -302,6 +361,7 @@ export function PlaygroundView() {
         onCaption: setDemoCaption,
         onOnlineA: setOnlineA,
       });
+      flashObject(DEMO_RECT_ID);
       const [hA, hB] = await Promise.all([
         runtimes.a.client.map.stateHash(),
         runtimes.b.client.map.stateHash(),
@@ -311,10 +371,32 @@ export function PlaygroundView() {
     } finally {
       setDemoRunning(false);
     }
-  }, [runtimes, demoRunning]);
+  }, [runtimes, demoRunning, flashObject]);
+
+  const handleResetBoard = useCallback(() => {
+    if (!runtimes) return;
+    const ids = runtimes.a.client.map.visibleObjectIds();
+    if (ids.length > 0) {
+      runtimes.a.client.mutate(ids.map((id) => ({ objectId: id, field: "deleted", value: true })));
+    }
+    // Re-seed clean starter shapes
+    runtimes.a.client.mutate([
+      { objectId: DEMO_RECT_ID, field: "deleted", value: false },
+      { objectId: DEMO_RECT_ID, field: "x", value: 80 },
+      { objectId: DEMO_RECT_ID, field: "y", value: 110 },
+      { objectId: DEMO_RECT_ID, field: "w", value: 150 },
+      { objectId: DEMO_RECT_ID, field: "h", value: 95 },
+      { objectId: DEMO_RECT_ID, field: "fill", value: "#dbeafe" },
+      { objectId: DEMO_RECT_ID, field: "stroke", value: "#2563eb" },
+      { objectId: "obj_demo_ellp1", field: "deleted", value: false },
+      { objectId: "obj_demo_arrw1", field: "deleted", value: false },
+      { objectId: "obj_demo_text1", field: "deleted", value: false },
+    ]);
+    setDemoCaption(null);
+  }, [runtimes]);
 
   const handleCopyLink = useCallback(async () => {
-    if (!boardId) return;
+    if (!boardId || mode !== "backend") return;
     const url = `${window.location.origin}/b/${boardId}`;
     try {
       await navigator.clipboard.writeText(url);
@@ -323,7 +405,7 @@ export function PlaygroundView() {
     } catch {
       // Fallback ignored in headless browsers
     }
-  }, [boardId]);
+  }, [boardId, mode]);
 
   if (!runtimes) {
     return (
@@ -336,19 +418,32 @@ export function PlaygroundView() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-neutral-100">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <h1 className="text-base font-bold tracking-tight text-neutral-950">SyncCanvas</h1>
           <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-[11px] text-neutral-600">
             {boardId}
           </span>
-          {mode === "local" && (
+          {mode === "local" ? (
             <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-700">
-              Local Simulation Mode (in-browser CRDT relay)
+              Local Simulation Mode
             </span>
+          ) : (
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700">
+              Live Backend Connected
+            </span>
+          )}
+          {mode === "local" && backendAwake && (
+            <button
+              type="button"
+              onClick={() => setBootNonce((n) => n + 1)}
+              className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-emerald-700"
+            >
+              Live server ready — Switch
+            </button>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             data-testid="run-conflict-demo"
@@ -361,6 +456,15 @@ export function PlaygroundView() {
 
           <button
             type="button"
+            data-testid="reset-board"
+            onClick={handleResetBoard}
+            className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Reset Board
+          </button>
+
+          <button
+            type="button"
             onClick={() => setFullScreen((v) => !v)}
             className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
           >
@@ -369,13 +473,38 @@ export function PlaygroundView() {
 
           <button
             type="button"
+            disabled={mode !== "backend"}
+            title={
+              mode === "backend"
+                ? "Copy shareable multi-tab URL"
+                : "Start the backend server to share boards across tabs/devices"
+            }
             onClick={() => void handleCopyLink()}
-            className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+            className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {copied ? "Copied!" : "Copy Share Link"}
           </button>
         </div>
       </header>
+
+      {toast !== null && (
+        <div
+          role="alert"
+          data-testid="sync-toast"
+          className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs font-medium text-amber-900"
+        >
+          <span>
+            <strong className="font-mono">{toast.code}</strong>: {toast.message}
+          </span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="text-amber-700 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {demoCaption !== null && (
         <div
@@ -409,6 +538,7 @@ export function PlaygroundView() {
             online={onlineA}
             latencyMs={latencyA}
             stateHash={hashA}
+            highlightedId={highlightedId}
             onToggleOnline={() => {
               const next = !onlineA;
               setOnlineA(next);
@@ -431,6 +561,7 @@ export function PlaygroundView() {
               online={onlineB}
               latencyMs={latencyB}
               stateHash={hashB}
+              highlightedId={highlightedId}
               onToggleOnline={() => {
                 const next = !onlineB;
                 setOnlineB(next);
@@ -453,6 +584,7 @@ export function PlaygroundView() {
         hashB={hashB}
         outboxA={outboxA}
         outboxB={outboxB}
+        onHighlightObject={flashObject}
       />
     </div>
   );

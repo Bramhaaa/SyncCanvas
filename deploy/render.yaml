@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: synccanvas-server
+    runtime: docker
+    plan: free
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SYNCCANVAS_BUS
+        value: local
+      - key: INSTANCE_ID
+        value: render-free-1
+      - key: JAVA_OPTS
+        value: "-XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Xss256k"
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: SYNCCANVAS_CORS_ALLOWED_ORIGINS
+        value: "*"

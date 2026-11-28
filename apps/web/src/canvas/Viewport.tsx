@@ -1,10 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { viewportMatrix, type ViewportState } from "./viewport-math";
 
 export interface ViewportProps {
   viewport: ViewportState;
+  svgRef?: RefObject<SVGSVGElement | null>;
   isPanning?: boolean;
   isSpacePressed?: boolean;
   cursor?: string;
@@ -13,6 +14,9 @@ export interface ViewportProps {
   onPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerCancel?: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerLeave?: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  onKeyUp?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   onDoubleClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** SVG world-space children rendered inside `<g transform="matrix(...)">`. */
   children: ReactNode;
@@ -26,6 +30,7 @@ const GRID_STEP = 24;
 
 export function Viewport({
   viewport,
+  svgRef,
   isPanning = false,
   isSpacePressed = false,
   cursor,
@@ -34,6 +39,9 @@ export function Viewport({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
+  onPointerLeave,
+  onKeyDown,
+  onKeyUp,
   onDoubleClick,
   children,
   overlay,
@@ -45,7 +53,8 @@ export function Viewport({
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden select-none bg-[#fafafa] touch-none"
+      tabIndex={0}
+      className="relative h-full w-full overflow-hidden select-none bg-[#fafafa] touch-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40"
       style={{
         cursor: resolvedCursor,
         backgroundImage: "radial-gradient(circle, #d4d4d8 1px, transparent 1px)",
@@ -57,9 +66,12 @@ export function Viewport({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
+      onKeyDown={onKeyDown}
+      onKeyUp={onKeyUp}
       onDoubleClick={onDoubleClick}
     >
-      <svg className="block h-full w-full" xmlns="http://www.w3.org/2000/svg">
+      <svg ref={svgRef} className="block h-full w-full" xmlns="http://www.w3.org/2000/svg">
         <g transform={matrix}>{children}</g>
       </svg>
 

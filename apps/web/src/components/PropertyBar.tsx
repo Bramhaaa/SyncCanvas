@@ -1,11 +1,12 @@
 "use client";
 
-import { bringToFront, sendToBack } from "@synccanvas/sync-engine";
+import { bringToFront, sendToBack, type Op } from "@synccanvas/sync-engine";
 import { asNumber, asString } from "@/canvas/tools/types";
 import { useObject, useSyncClient, useVisibleIds } from "@/sync";
 
 export interface PropertyBarProps {
   selectedId: string;
+  onMutate: (changes: Array<Omit<Op, "hlc">>) => void;
   onDeleted: () => void;
 }
 
@@ -22,7 +23,7 @@ const STROKE_SWATCHES = ["#1f2937", "#2563eb", "#dc2626", "#16a34a", "#d97706", 
 const STROKE_WIDTHS = [1, 2, 4, 8];
 const FONT_SIZES = [14, 18, 24, 36];
 
-export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
+export function PropertyBar({ selectedId, onMutate, onDeleted }: PropertyBarProps) {
   const client = useSyncClient();
   const visibleIds = useVisibleIds();
   const obj = useObject(selectedId);
@@ -52,7 +53,7 @@ export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
   return (
     <div
       data-testid="property-bar"
-      className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white/95 px-3 py-1.5 text-xs text-neutral-700 shadow-md backdrop-blur"
+      className="pointer-events-auto flex flex-wrap items-center gap-2.5 rounded-xl border border-neutral-200 bg-white/95 px-2.5 py-1.5 text-xs text-neutral-700 shadow-md backdrop-blur"
     >
       {hasFill && (
         <div className="flex items-center gap-1">
@@ -63,10 +64,8 @@ export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
               type="button"
               aria-label={`Fill ${swatch}`}
               data-testid={`fill-${swatch}`}
-              onClick={() =>
-                client.mutate([{ objectId: selectedId, field: "fill", value: swatch }])
-              }
-              className={`h-5 w-5 rounded border ${
+              onClick={() => onMutate([{ objectId: selectedId, field: "fill", value: swatch }])}
+              className={`h-4 w-4 rounded border ${
                 fill === swatch ? "ring-2 ring-blue-500 ring-offset-1" : "border-neutral-300"
               }`}
               style={{
@@ -89,10 +88,8 @@ export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
             type="button"
             aria-label={`Stroke ${swatch}`}
             data-testid={`stroke-${swatch}`}
-            onClick={() =>
-              client.mutate([{ objectId: selectedId, field: "stroke", value: swatch }])
-            }
-            className={`h-5 w-5 rounded-full border ${
+            onClick={() => onMutate([{ objectId: selectedId, field: "stroke", value: swatch }])}
+            className={`h-4 w-4 rounded-full border ${
               stroke === swatch ? "ring-2 ring-blue-500 ring-offset-1" : "border-neutral-300"
             }`}
             style={{ backgroundColor: swatch }}
@@ -102,15 +99,13 @@ export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
 
       {type !== "text" && (
         <div className="flex items-center gap-1">
-          <span className="text-[11px] text-neutral-500">Width</span>
+          <span className="text-[11px] text-neutral-500">W</span>
           {STROKE_WIDTHS.map((w) => (
             <button
               key={w}
               type="button"
-              onClick={() =>
-                client.mutate([{ objectId: selectedId, field: "strokeWidth", value: w }])
-              }
-              className={`rounded px-1.5 py-0.5 ${
+              onClick={() => onMutate([{ objectId: selectedId, field: "strokeWidth", value: w }])}
+              className={`rounded px-1.5 py-0.5 text-[11px] ${
                 strokeWidth === w ? "bg-blue-600 text-white" : "bg-neutral-100 hover:bg-neutral-200"
               }`}
             >
@@ -127,10 +122,8 @@ export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
             <button
               key={sz}
               type="button"
-              onClick={() =>
-                client.mutate([{ objectId: selectedId, field: "fontSize", value: sz }])
-              }
-              className={`rounded px-1.5 py-0.5 ${
+              onClick={() => onMutate([{ objectId: selectedId, field: "fontSize", value: sz }])}
+              className={`rounded px-1.5 py-0.5 text-[11px] ${
                 fontSize === sz ? "bg-blue-600 text-white" : "bg-neutral-100 hover:bg-neutral-200"
               }`}
             >
@@ -146,22 +139,20 @@ export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
         <button
           type="button"
           onClick={() =>
-            client.mutate([
+            onMutate([
               { objectId: selectedId, field: "zIndex", value: bringToFront(allZIndexes()) },
             ])
           }
-          className="rounded bg-neutral-100 px-2 py-1 hover:bg-neutral-200"
+          className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] hover:bg-neutral-200"
         >
           Front
         </button>
         <button
           type="button"
           onClick={() =>
-            client.mutate([
-              { objectId: selectedId, field: "zIndex", value: sendToBack(allZIndexes()) },
-            ])
+            onMutate([{ objectId: selectedId, field: "zIndex", value: sendToBack(allZIndexes()) }])
           }
-          className="rounded bg-neutral-100 px-2 py-1 hover:bg-neutral-200"
+          className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] hover:bg-neutral-200"
         >
           Back
         </button>
@@ -169,10 +160,10 @@ export function PropertyBar({ selectedId, onDeleted }: PropertyBarProps) {
           type="button"
           data-testid="delete-object"
           onClick={() => {
-            client.mutate([{ objectId: selectedId, field: "deleted", value: true }]);
+            onMutate([{ objectId: selectedId, field: "deleted", value: true }]);
             onDeleted();
           }}
-          className="rounded bg-red-50 px-2 py-1 text-red-600 hover:bg-red-100"
+          className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-600 hover:bg-red-100"
         >
           Delete
         </button>

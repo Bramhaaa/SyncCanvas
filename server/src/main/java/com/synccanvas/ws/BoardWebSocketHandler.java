@@ -3,6 +3,7 @@ package com.synccanvas.ws;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.synccanvas.config.LimitsProperties;
+import com.synccanvas.config.SyncCanvasMetrics;
 import com.synccanvas.crdt.Op;
 import com.synccanvas.persistence.BoardRepository;
 import com.synccanvas.persistence.BoardStateService;
@@ -27,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.socket.CloseStatus;
@@ -48,6 +50,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
     private final BoardBus boardBus;
     private final SessionRegistry sessionRegistry;
     private final PresenceHandler presenceHandler;
+    private final SyncCanvasMetrics metrics;
     private final LimitsProperties limits;
     private final ObjectMapper objectMapper;
 
@@ -61,6 +64,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
             BoardBus boardBus,
             SessionRegistry sessionRegistry,
             PresenceHandler presenceHandler,
+            ObjectProvider<SyncCanvasMetrics> metricsProvider,
             LimitsProperties limits,
             ObjectMapper objectMapper) {
         this.boardRepository = boardRepository;
@@ -70,6 +74,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
         this.boardBus = boardBus;
         this.sessionRegistry = sessionRegistry;
         this.presenceHandler = presenceHandler;
+        this.metrics = metricsProvider != null ? metricsProvider.getIfAvailable() : null;
         this.limits = limits;
         this.objectMapper = objectMapper;
     }
@@ -150,8 +155,10 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handleSyncPush(SessionRegistry.RegisteredSession reg, SyncPushMessage push) {
+        long startNanos = System.nanoTime();
         TokenBucketRateLimiter pushLimiter = pushLimiters.get(reg.sessionId());
         if (pushLimiter != null && !pushLimiter.tryAcquire()) {
+            recordRejected(ProtocolErrorCode.RATE_LIMITED);
             sessionRegistry.sendMessage(
                     reg.session(),
                     new ErrorMessage(ProtocolErrorCode.RATE_LIMITED, "SYNC_PUSH rate limit exceeded"));
@@ -159,6 +166,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
         }
 
         if (!reg.clientId().equals(push.clientId())) {
+            recordRejected(ProtocolErrorCode.INVALID_FIELD);
             sessionRegistry.sendMessage(
                     reg.session(),
                     new ErrorMessage(
@@ -170,6 +178,7 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
         ValidationResult validation = opValidator.validateBatch(
                 reg.clientId(), push.ops(), boardStateService.getState(reg.boardId()));
         if (validation instanceof ValidationResult.Invalid invalid) {
+            recordRejected(invalid.code());
             sessionRegistry.sendMessage(reg.session(), invalid.toErrorMessage());
             return;
         }
@@ -187,6 +196,17 @@ public class BoardWebSocketHandler extends TextWebSocketHandler {
         SyncBroadcastMessage broadcast =
                 new SyncBroadcastMessage(seqStart, seqEnd, reg.clientId(), storedOps);
         boardBus.publishOps(reg.boardId(), broadcast);
+
+        if (metrics != null) {
+            metrics.recordOpsApplied(stored.size());
+            metrics.recordBroadcastLatencyNanos(System.nanoTime() - startNanos);
+        }
+    }
+
+    private void recordRejected(ProtocolErrorCode code) {
+        if (metrics != null) {
+            metrics.recordOpsRejected(code.name());
+        }
     }
 
     private void handleSyncPull(SessionRegistry.RegisteredSession reg, SyncPullMessage pull) {

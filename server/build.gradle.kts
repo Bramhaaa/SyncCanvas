@@ -46,3 +46,11 @@ tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("synccanvas.vectors.dir", rootProject.projectDir.resolve("../spec/vectors").absolutePath)
 }
+
+tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
+    archiveFileName.set("app.jar")
+}
+
+tasks.named<Jar>("jar") {
+    enabled = false
+}

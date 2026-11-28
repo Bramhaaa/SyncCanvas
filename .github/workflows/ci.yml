@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Format check
+        run: pnpm format:check
+
       - name: Lint
         run: pnpm -r lint
 
@@ -33,6 +36,9 @@ jobs:
 
       - name: Test
         run: pnpm -r test
+
+      - name: Web production build
+        run: pnpm --filter web build
 
   java:
     name: Java (Gradle check)

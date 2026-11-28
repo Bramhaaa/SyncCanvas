@@ -29,3 +29,9 @@ export {
   type PresenceUpdate,
   type RemotePeer,
 } from "./presence.js";
+export {
+  createUndoManager,
+  type UndoEntry,
+  type UndoFieldDelta,
+  type UndoManager,
+} from "./undo.js";

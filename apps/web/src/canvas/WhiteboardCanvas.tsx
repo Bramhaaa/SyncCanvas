@@ -1,16 +1,32 @@
 "use client";
 
-import { bringToFront, type Op, type Point, type RemotePeer } from "@synccanvas/sync-engine";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  bringToFront,
+  createUndoManager,
+  type FieldValue,
+  type Op,
+  type Point,
+  type RemotePeer,
+  type UndoFieldDelta,
+} from "@synccanvas/sync-engine";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PropertyBar } from "@/components/PropertyBar";
 import { Toolbar } from "@/components/Toolbar";
 import { useObject, useSyncClient, useVisibleIds } from "@/sync";
+import { exportCanvasAsPng, exportCanvasAsSvg } from "./export/export-canvas";
 import { normalizeFreehandPoints, pointsToSmoothSvgPath } from "./freehand";
 import { RemoteCursorsOverlay, RemoteSelectionOutlines } from "./presence";
 import { SelectionOverlay } from "./selection/SelectionOverlay";
 import { ShapeNode } from "./shapes/ShapeNode";
 import { TextEditorOverlay } from "./text";
-import { asNumber, asString, generateObjectId, type ResizeHandle, type Tool } from "./tools/types";
+import {
+  asNumber,
+  asString,
+  generateObjectId,
+  getObjectBounds,
+  type ResizeHandle,
+  type Tool,
+} from "./tools/types";
 import { useViewport } from "./useViewport";
 import { screenToWorld, type WorldPoint } from "./viewport-math";
 import { Viewport } from "./Viewport";
@@ -20,7 +36,7 @@ type InteractionState =
   | {
       kind: "creating";
       objectId: string;
-      shapeType: "rect" | "ellipse" | "arrow";
+      shapeType: "rect" | "ellipse" | "diamond" | "sticky" | "arrow";
       start: WorldPoint;
     }
   | {
@@ -35,6 +51,7 @@ type InteractionState =
       origY: number;
       origX2?: number;
       origY2?: number;
+      lastOps: Map<string, Op>;
     }
   | {
       kind: "resizing";
@@ -47,6 +64,7 @@ type InteractionState =
       origH: number;
       origX2: number;
       origY2: number;
+      lastOps: Map<string, Op>;
     };
 
 export interface WhiteboardCanvasProps {
@@ -54,18 +72,49 @@ export interface WhiteboardCanvasProps {
   onSelectionChange?: (selectedId: string | null) => void;
   /** Optional remote peers to render cursors and selection outlines for (T32). */
   presencePeers?: RemotePeer[];
-  /** Optional callback receiving world coordinates on pointer move (T32). */
+  /** Optional callback receiving world coordinates on pointer move / null on leave (T32). */
   onCursorMove?: (world: WorldPoint | null) => void;
+  /** Optional object ID to visually highlight/pulse (from Inspector click or Conflict Demo). */
+  highlightedId?: string | null;
+}
+
+function HighlightRing({ id, zoom }: { id: string; zoom: number }) {
+  const obj = useObject(id);
+  if (!obj) return null;
+  const bounds = getObjectBounds(obj);
+  const inv = 1 / Math.max(0.1, zoom);
+  const pad = 8 * inv;
+
+  return (
+    <rect
+      data-testid={`highlight-${id}`}
+      x={bounds.x - pad}
+      y={bounds.y - pad}
+      width={bounds.w + pad * 2}
+      height={bounds.h + pad * 2}
+      rx={6 * inv}
+      fill="none"
+      stroke="#f59e0b"
+      strokeWidth={3.5 * inv}
+      className="animate-pulse"
+      pointerEvents="none"
+    />
+  );
 }
 
 export function WhiteboardCanvas({
   onSelectionChange,
   presencePeers = [],
   onCursorMove,
+  highlightedId = null,
 }: WhiteboardCanvasProps) {
   const client = useSyncClient();
   const visibleIds = useVisibleIds();
   const vp = useViewport();
+
+  const undoManager = useMemo(() => createUndoManager(client), [client]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   const [tool, setTool] = useState<Tool>("select");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -74,6 +123,16 @@ export function WhiteboardCanvas({
 
   const interactionRef = useRef<InteractionState>({ kind: "idle" });
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  useEffect(() => {
+    const syncFlags = () => {
+      setCanUndo(undoManager.canUndo());
+      setCanRedo(undoManager.canRedo());
+    };
+    syncFlags();
+    return undoManager.subscribe(syncFlags);
+  }, [undoManager]);
 
   const updateSelection = useCallback(
     (id: string | null) => {
@@ -104,9 +163,37 @@ export function WhiteboardCanvas({
     return bringToFront(keys);
   }, [client, visibleIds]);
 
-  // Keyboard shortcuts: V/R/O/A/P/T, Delete/Backspace, Esc
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
+  const handleZoomToFit = useCallback(() => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || visibleIds.length === 0) {
+      vp.resetViewport();
+      return;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const id of visibleIds) {
+      const obj = client.map.getObject(id);
+      if (!obj) continue;
+      const b = getObjectBounds(obj);
+      if (b.x < minX) minX = b.x;
+      if (b.y < minY) minY = b.y;
+      if (b.x + b.w > maxX) maxX = b.x + b.w;
+      if (b.y + b.h > maxY) maxY = b.y + b.h;
+    }
+    if (!Number.isFinite(minX)) {
+      vp.resetViewport();
+      return;
+    }
+    vp.fitToBounds({ x: minX, y: minY, w: maxX - minX, h: maxY - minY }, rect.width, rect.height);
+  }, [client, visibleIds, vp]);
+
+  // Focus-scoped keyboard shortcuts (fixes F4 split-screen keyboard collision!)
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (vp.handleSpaceKeyDown(e)) return;
+
       const target = e.target as HTMLElement | null;
       if (
         target?.tagName === "INPUT" ||
@@ -115,12 +202,30 @@ export function WhiteboardCanvas({
       ) {
         return;
       }
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          undoManager.redo();
+        } else {
+          undoManager.undo();
+        }
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && key === "y") {
+        e.preventDefault();
+        undoManager.redo();
+        return;
+      }
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
       if (key === "v") setTool("select");
       else if (key === "r") setTool("rect");
       else if (key === "o") setTool("ellipse");
+      else if (key === "d") setTool("diamond");
+      else if (key === "s") setTool("sticky");
       else if (key === "a") setTool("arrow");
       else if (key === "p") setTool("freehand");
       else if (key === "t") setTool("text");
@@ -130,14 +235,12 @@ export function WhiteboardCanvas({
         setTool("select");
       } else if ((key === "delete" || key === "backspace") && selectedId !== null) {
         e.preventDefault();
-        client.mutate([{ objectId: selectedId, field: "deleted", value: true }]);
+        undoManager.mutate([{ objectId: selectedId, field: "deleted", value: true }]);
         updateSelection(null);
       }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [client, selectedId, updateSelection]);
+    },
+    [selectedId, undoManager, updateSelection, vp],
+  );
 
   const eventToWorld = useCallback(
     (clientX: number, clientY: number): WorldPoint => {
@@ -155,6 +258,9 @@ export function WhiteboardCanvas({
       if (tool !== "select") return;
       e.stopPropagation();
 
+      // Ensure this pane receives focus for pane-scoped keyboard shortcuts
+      (e.currentTarget.closest("[tabindex]") as HTMLElement | null)?.focus({ preventScroll: true });
+
       updateSelection(id);
       const obj = client.map.getObject(id);
       if (!obj) return;
@@ -168,6 +274,7 @@ export function WhiteboardCanvas({
         origY: asNumber(obj.y, 0),
         origX2: obj.type === "arrow" ? asNumber(obj.x2, asNumber(obj.x, 0) + 80) : undefined,
         origY2: obj.type === "arrow" ? asNumber(obj.y2, asNumber(obj.y, 0)) : undefined,
+        lastOps: new Map(),
       };
     },
     [client, eventToWorld, tool, updateSelection, vp.isSpacePressed],
@@ -204,6 +311,7 @@ export function WhiteboardCanvas({
         origH: asNumber(obj.h, 80),
         origX2: asNumber(obj.x2, asNumber(obj.x, 0) + 80),
         origY2: asNumber(obj.y2, asNumber(obj.y, 0)),
+        lastOps: new Map(),
       };
     },
     [client, eventToWorld, selectedId],
@@ -211,6 +319,8 @@ export function WhiteboardCanvas({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      e.currentTarget.focus({ preventScroll: true });
+
       if (vp.startPanIfApplicable(e)) {
         e.currentTarget.setPointerCapture?.(e.pointerId);
         return;
@@ -227,7 +337,7 @@ export function WhiteboardCanvas({
 
       if (tool === "text") {
         const objectId = generateObjectId();
-        client.mutate([
+        undoManager.mutate([
           { objectId, field: "type", value: "text" },
           { objectId, field: "x", value: Math.round(world.x) },
           { objectId, field: "y", value: Math.round(world.y) },
@@ -250,13 +360,13 @@ export function WhiteboardCanvas({
         return;
       }
 
-      // rect, ellipse, arrow
+      // rect, ellipse, diamond, sticky, arrow
       const objectId = generateObjectId();
       const baseOps: Array<Omit<Op, "hlc">> = [
         { objectId, field: "type", value: tool },
         { objectId, field: "x", value: Math.round(world.x) },
         { objectId, field: "y", value: Math.round(world.y) },
-        { objectId, field: "stroke", value: "#1f2937" },
+        { objectId, field: "stroke", value: tool === "sticky" ? "#ca8a04" : "#1f2937" },
         { objectId, field: "strokeWidth", value: 2 },
         { objectId, field: "zIndex", value: nextTopZIndex() },
       ];
@@ -267,16 +377,31 @@ export function WhiteboardCanvas({
           { objectId, field: "y2", value: Math.round(world.y + 1) },
           { objectId, field: "arrowHead", value: "end" },
         );
+      } else if (tool === "sticky") {
+        baseOps.push(
+          { objectId, field: "w", value: 160 },
+          { objectId, field: "h", value: 120 },
+          { objectId, field: "fill", value: "#fef08a" },
+          { objectId, field: "text", value: "" },
+          { objectId, field: "fontSize", value: 16 },
+        );
       } else {
         baseOps.push(
           { objectId, field: "w", value: 1 },
           { objectId, field: "h", value: 1 },
-          { objectId, field: "fill", value: "#dbeafe" },
+          { objectId, field: "fill", value: tool === "diamond" ? "#f3e8ff" : "#dbeafe" },
         );
       }
 
-      client.mutate(baseOps);
+      undoManager.mutate(baseOps);
       updateSelection(objectId);
+
+      if (tool === "sticky") {
+        setEditingTextId(objectId);
+        setTool("select");
+        return;
+      }
+
       interactionRef.current = {
         kind: "creating",
         objectId,
@@ -285,7 +410,7 @@ export function WhiteboardCanvas({
       };
       e.currentTarget.setPointerCapture?.(e.pointerId);
     },
-    [client, eventToWorld, nextTopZIndex, tool, updateSelection, vp],
+    [eventToWorld, nextTopZIndex, tool, undoManager, updateSelection, vp],
   );
 
   const handlePointerMove = useCallback(
@@ -345,7 +470,9 @@ export function WhiteboardCanvas({
             { objectId: state.objectId, field: "y2", value: Math.round(state.origY2 + dy) },
           );
         }
-        client.mutate(changes);
+        for (const op of client.mutate(changes)) {
+          state.lastOps.set(op.field, op);
+        }
         return;
       }
 
@@ -353,17 +480,21 @@ export function WhiteboardCanvas({
         const dx = world.x - state.startWorld.x;
         const dy = world.y - state.startWorld.y;
         if (state.handle === "start") {
-          client.mutate([
+          for (const op of client.mutate([
             { objectId: state.objectId, field: "x", value: Math.round(state.origX + dx) },
             { objectId: state.objectId, field: "y", value: Math.round(state.origY + dy) },
-          ]);
+          ])) {
+            state.lastOps.set(op.field, op);
+          }
           return;
         }
         if (state.handle === "end") {
-          client.mutate([
+          for (const op of client.mutate([
             { objectId: state.objectId, field: "x2", value: Math.round(state.origX2 + dx) },
             { objectId: state.objectId, field: "y2", value: Math.round(state.origY2 + dy) },
-          ]);
+          ])) {
+            state.lastOps.set(op.field, op);
+          }
           return;
         }
 
@@ -394,12 +525,14 @@ export function WhiteboardCanvas({
           h = nextH;
         }
 
-        client.mutate([
+        for (const op of client.mutate([
           { objectId: state.objectId, field: "x", value: Math.round(x) },
           { objectId: state.objectId, field: "y", value: Math.round(y) },
           { objectId: state.objectId, field: "w", value: Math.round(w) },
           { objectId: state.objectId, field: "h", value: Math.round(h) },
-        ]);
+        ])) {
+          state.lastOps.set(op.field, op);
+        }
       }
     },
     [client, eventToWorld, onCursorMove, vp],
@@ -416,7 +549,7 @@ export function WhiteboardCanvas({
       if (state.points.length > 0) {
         const { x, y, points } = normalizeFreehandPoints(state.points, vp.viewport.zoom);
         const objectId = generateObjectId();
-        client.mutate([
+        undoManager.mutate([
           { objectId, field: "type", value: "freehand" },
           { objectId, field: "x", value: x },
           { objectId, field: "y", value: y },
@@ -430,8 +563,51 @@ export function WhiteboardCanvas({
       return;
     }
 
+    if (state.kind === "moving" && state.lastOps.size > 0) {
+      const beforeLookup: Record<string, FieldValue | undefined> = {
+        x: state.origX,
+        y: state.origY,
+        x2: state.origX2,
+        y2: state.origY2,
+      };
+      const deltas: UndoFieldDelta[] = [];
+      for (const op of state.lastOps.values()) {
+        deltas.push({
+          objectId: op.objectId,
+          field: op.field,
+          beforeValue: beforeLookup[op.field],
+          afterValue: op.value,
+          writtenHlc: op.hlc,
+        });
+      }
+      undoManager.recordTransaction(deltas);
+      return;
+    }
+
+    if (state.kind === "resizing" && state.lastOps.size > 0) {
+      const beforeLookup: Record<string, FieldValue | undefined> = {
+        x: state.origX,
+        y: state.origY,
+        w: state.origW,
+        h: state.origH,
+        x2: state.origX2,
+        y2: state.origY2,
+      };
+      const deltas: UndoFieldDelta[] = [];
+      for (const op of state.lastOps.values()) {
+        deltas.push({
+          objectId: op.objectId,
+          field: op.field,
+          beforeValue: beforeLookup[op.field],
+          afterValue: op.value,
+          writtenHlc: op.hlc,
+        });
+      }
+      undoManager.recordTransaction(deltas);
+      return;
+    }
+
     if (state.kind === "creating") {
-      // Give single-click shapes a usable default size
       const obj = client.map.getObject(state.objectId);
       if (obj && state.shapeType !== "arrow") {
         const w = asNumber(obj.w, 1);
@@ -445,13 +621,18 @@ export function WhiteboardCanvas({
       }
       setTool("select");
     }
-  }, [client, nextTopZIndex, updateSelection, vp]);
+  }, [client, nextTopZIndex, undoManager, updateSelection, vp]);
+
+  const handlePointerLeave = useCallback(() => {
+    onCursorMove?.(null);
+  }, [onCursorMove]);
 
   const editingObj = useObject(editingTextId ?? "");
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <Viewport
+        svgRef={svgRef}
         viewport={vp.viewport}
         isPanning={vp.isPanning}
         isSpacePressed={vp.isSpacePressed}
@@ -461,18 +642,23 @@ export function WhiteboardCanvas({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+        onKeyDown={handleKeyDown}
+        onKeyUp={vp.handleSpaceKeyUp}
         overlay={
           <>
             {presencePeers.length > 0 && <RemoteCursorsOverlay peers={presencePeers} />}
             {editingTextId !== null && editingObj !== undefined && (
               <TextEditorOverlay
-                x={asNumber(editingObj.x, 0)}
-                y={asNumber(editingObj.y, 0)}
+                x={asNumber(editingObj.x, 0) + (editingObj.type === "sticky" ? 8 : 0)}
+                y={asNumber(editingObj.y, 0) + (editingObj.type === "sticky" ? 8 : 0)}
                 initialText={asString(editingObj.text, "")}
                 fontSize={asNumber(editingObj.fontSize, 16)}
-                color={asString(editingObj.stroke, "#1f2937")}
+                color={
+                  editingObj.type === "sticky" ? "#1f2937" : asString(editingObj.stroke, "#1f2937")
+                }
                 onCommit={(text) => {
-                  client.mutate([{ objectId: editingTextId, field: "text", value: text }]);
+                  undoManager.mutate([{ objectId: editingTextId, field: "text", value: text }]);
                   setEditingTextId(null);
                 }}
                 onCancel={() => setEditingTextId(null)}
@@ -482,14 +668,39 @@ export function WhiteboardCanvas({
         }
         hud={
           <>
-            <div className="pointer-events-none absolute left-1/2 top-3 z-10 flex -translate-x-1/2 flex-col items-center gap-2">
-              <Toolbar activeTool={tool} onSelectTool={setTool} />
-              {selectedId !== null && (
-                <PropertyBar selectedId={selectedId} onDeleted={() => updateSelection(null)} />
-              )}
+            <div className="pointer-events-none absolute left-1/2 top-2.5 z-10 -translate-x-1/2">
+              <Toolbar
+                activeTool={tool}
+                onSelectTool={setTool}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onUndo={() => undoManager.undo()}
+                onRedo={() => undoManager.redo()}
+                onExportSvg={() => exportCanvasAsSvg(svgRef.current)}
+                onExportPng={() => exportCanvasAsPng(svgRef.current)}
+              />
             </div>
 
+            {selectedId !== null && (
+              <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-10rem)]">
+                <PropertyBar
+                  selectedId={selectedId}
+                  onMutate={(changes) => undoManager.mutate(changes)}
+                  onDeleted={() => updateSelection(null)}
+                />
+              </div>
+            )}
+
             <div className="pointer-events-auto absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-lg border border-neutral-200 bg-white/95 px-2 py-1 text-xs text-neutral-700 shadow-sm">
+              <button
+                type="button"
+                onClick={handleZoomToFit}
+                className="rounded px-1.5 text-[11px] hover:bg-neutral-100"
+                title="Fit all shapes in view"
+              >
+                Fit
+              </button>
+              <div className="h-3.5 w-px bg-neutral-200" />
               <button
                 type="button"
                 onClick={() => vp.zoomBy(0.8)}
@@ -539,6 +750,8 @@ export function WhiteboardCanvas({
             pointerEvents="none"
           />
         )}
+
+        {highlightedId !== null && <HighlightRing id={highlightedId} zoom={vp.viewport.zoom} />}
 
         {presencePeers.length > 0 && (
           <RemoteSelectionOutlines peers={presencePeers} zoom={vp.viewport.zoom} />

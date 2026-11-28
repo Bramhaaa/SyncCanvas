@@ -297,4 +297,65 @@ describe("SyncClient", () => {
       { numRuns: 25 },
     );
   });
+
+  it("retries outbox with backoff on RATE_LIMITED and stops transport on BOARD_NOT_FOUND", async () => {
+    const sent: unknown[] = [];
+    let messageHandler: ((m: import("../src/protocol.js").ServerMessage) => void) | null = null;
+    let statusHandler: ((s: import("../src/types.js").ConnStatus) => void) | null = null;
+    let closed = false;
+
+    const fakeTransport: import("../src/types.js").Transport = {
+      connect() {
+        statusHandler?.("online");
+      },
+      close() {
+        closed = true;
+        statusHandler?.("offline");
+      },
+      send(msg) {
+        sent.push(msg);
+      },
+      onMessage(cb) {
+        messageHandler = cb;
+        return () => {
+          messageHandler = null;
+        };
+      },
+      onStatus(cb) {
+        statusHandler = cb;
+        return () => {
+          statusHandler = null;
+        };
+      },
+      setOnline() {},
+      setLatency() {},
+    };
+
+    const storage = createMemoryStorage({ nodeId: "user_a" });
+    const client = createSyncClient({
+      boardId: "brd_err00001",
+      nodeId: "user_a",
+      storage,
+      transport: fakeTransport,
+      clock: createHlcClock({ nodeId: "user_a", now: () => 1_732_579_200_000 }),
+      flushIntervalMs: 0,
+    });
+
+    await client.start();
+    client.mutate([{ objectId: "obj_1", field: "x", value: 10 }]);
+    const pushCountBefore = sent.filter((m) => (m as { type: string }).type === "SYNC_PUSH").length;
+    expect(pushCountBefore).toBe(1);
+
+    // Server responds RATE_LIMITED -> client schedules retry
+    messageHandler!({ type: "ERROR", code: "RATE_LIMITED", message: "Slow down" });
+    await new Promise((r) => setTimeout(r, 1_100));
+    const pushCountAfter = sent.filter((m) => (m as { type: string }).type === "SYNC_PUSH").length;
+    expect(pushCountAfter).toBeGreaterThanOrEqual(2);
+
+    // Server responds BOARD_NOT_FOUND -> transport closed so no infinite reconnect
+    messageHandler!({ type: "ERROR", code: "BOARD_NOT_FOUND", message: "Missing board" });
+    expect(closed).toBe(true);
+
+    await client.stop();
+  });
 });

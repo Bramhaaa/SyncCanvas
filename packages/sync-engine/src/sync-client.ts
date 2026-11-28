@@ -70,6 +70,8 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
   let lastVisibleIds: string[] = [];
   let connStatus: ConnStatus = "offline";
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryAttempt = 0;
   let pullInFlight = false;
   let snapshotInFlight = false;
   let started = false;
@@ -112,6 +114,25 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
       clearTimeout(flushTimer);
       flushTimer = null;
     }
+  }
+
+  function clearRetryTimer(): void {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+  }
+
+  function scheduleErrorRetry(): void {
+    if (stopped || connStatus !== "online" || outboxMap.size === 0 || retryTimer !== null) {
+      return;
+    }
+    const delayMs = Math.min(5_000, 1_000 * 2 ** retryAttempt);
+    retryAttempt += 1;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      flushOutbox();
+    }, delayMs);
   }
 
   function flushOutbox(): void {
@@ -231,6 +252,8 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
     notifySubscribers(touchedObjects);
 
     if (ackedHlcs.length > 0) {
+      retryAttempt = 0;
+      clearRetryTimer();
       emitter.emit({ kind: "acked", hlcs: ackedHlcs, seq: msg.serverSeqEnd });
       emitter.emit({ kind: "outbox", depth: outboxMap.size });
     }
@@ -355,6 +378,20 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
   function handleError(msg: ErrorMessage): void {
     emitter.emit({ kind: "error", code: msg.code, message: msg.message });
 
+    if (msg.code === "BOARD_NOT_FOUND") {
+      // Stop transport so it doesn't spin in an infinite reconnect loop on a missing board.
+      clearFlushTimer();
+      clearRetryTimer();
+      transport.close();
+      return;
+    }
+
+    if (msg.code === "RATE_LIMITED" || msg.code === "CLOCK_SKEW") {
+      // Transient rejection: keep ops in outbox and retry with exponential backoff.
+      scheduleErrorRetry();
+      return;
+    }
+
     if (
       (msg.code === "INVALID_FIELD" || msg.code === "BOARD_FULL") &&
       msg.rejectedHlcs !== undefined &&
@@ -403,6 +440,8 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
 
     if (next === "online") {
       pullInFlight = false;
+      retryAttempt = 0;
+      clearRetryTimer();
       bufferedBroadcasts.clear();
       if (!snapshotInFlight) {
         // Protocol §5.5: SYNC_PULL first, then flush outbox.
@@ -411,6 +450,7 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
       }
     } else {
       clearFlushTimer();
+      clearRetryTimer();
     }
   }
 
@@ -471,6 +511,7 @@ export function createSyncClient(options: SyncClientOptions): SyncClient {
       if (stopped) return;
       stopped = true;
       clearFlushTimer();
+      clearRetryTimer();
       unsubMessage?.();
       unsubStatus?.();
       unsubMessage = null;

@@ -13,9 +13,9 @@ WORKDIR /app
 RUN addgroup -S synccanvas && adduser -S synccanvas -G synccanvas
 USER synccanvas:synccanvas
 
-COPY --from=build /app/build/libs/*.jar /app/app.jar
+COPY --from=build /app/build/libs/app.jar /app/app.jar
 
 EXPOSE 8080
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Xss256k"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

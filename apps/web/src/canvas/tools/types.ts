@@ -1,6 +1,7 @@
 import type { FieldValue, Point } from "@synccanvas/sync-engine";
 
-export type Tool = "select" | "rect" | "ellipse" | "arrow" | "freehand" | "text";
+export type Tool =
+  "select" | "rect" | "ellipse" | "diamond" | "sticky" | "arrow" | "freehand" | "text";
 
 export type ResizeHandle = "nw" | "ne" | "sw" | "se" | "start" | "end";
 

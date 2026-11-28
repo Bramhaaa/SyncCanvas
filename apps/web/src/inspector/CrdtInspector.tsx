@@ -18,6 +18,7 @@ export interface CrdtInspectorProps {
   hashB: string;
   outboxA: number;
   outboxB: number;
+  onHighlightObject?: (objectId: string) => void;
 }
 
 function HlcBadge({ hlc }: { hlc: string }) {
@@ -49,6 +50,7 @@ export function CrdtInspector({
   hashB,
   outboxA,
   outboxB,
+  onHighlightObject,
 }: CrdtInspectorProps) {
   const [paneFilter, setPaneFilter] = useState<"ALL" | "A" | "B">("ALL");
   const [objectFilter, setObjectFilter] = useState("");
@@ -161,7 +163,12 @@ export function CrdtInspector({
                   const ev = row.event;
                   if (ev.kind === "local_op") {
                     return (
-                      <tr key={row.id} className="hover:bg-neutral-50">
+                      <tr
+                        key={row.id}
+                        onClick={() => onHighlightObject?.(ev.op.objectId)}
+                        title="Click to highlight object on canvas"
+                        className="cursor-pointer hover:bg-amber-50/70"
+                      >
                         <td className="px-2 py-1 font-mono text-[11px] text-neutral-400">
                           {row.timestamp}
                         </td>
@@ -188,7 +195,12 @@ export function CrdtInspector({
                   if (ev.kind === "remote_op") {
                     const accepted = ev.result.status === "ACCEPTED";
                     return (
-                      <tr key={row.id} className="hover:bg-neutral-50">
+                      <tr
+                        key={row.id}
+                        onClick={() => onHighlightObject?.(ev.op.objectId)}
+                        title="Click to highlight object on canvas"
+                        className="cursor-pointer hover:bg-amber-50/70"
+                      >
                         <td className="px-2 py-1 font-mono text-[11px] text-neutral-400">
                           {row.timestamp}
                         </td>
